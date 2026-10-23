@@ -34,6 +34,9 @@ def test_pages_render_and_authorization_is_required(tmp_path: Path):
         assert "api_post_all_ack" in new_scan.text
         assert "enable_bola" in new_scan.text
         assert "bola_auth_type" in new_scan.text
+        assert "bola_login_url" in new_scan.text
+        assert "bola_username" in new_scan.text
+        assert "bola_password" in new_scan.text
         assert "bola_allowlist" in new_scan.text
         assert "bola_allow_all_ack" in new_scan.text
         assert "max_api_tests" in new_scan.text

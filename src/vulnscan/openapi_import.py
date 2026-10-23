@@ -217,7 +217,6 @@ def parse_openapi_report(
         return OpenAPIImportReport(warnings=warnings, stats=stats)
 
     stats["paths"] = len(paths)
-    base = _base_url(spec, scope)
     endpoints: dict[str, Endpoint] = {}
     other_methods = 0
     skipped_scope = 0
@@ -251,6 +250,33 @@ def parse_openapi_report(
             operation = path_item.get(method)
             if not isinstance(operation, dict):
                 continue
+            operation_servers = operation.get("servers")
+            path_servers = path_item.get("servers")
+            base = _base_url(
+                spec,
+                scope,
+                servers=(
+                    operation_servers
+                    if isinstance(operation_servers, list) and operation_servers
+                    else path_servers
+                ),
+            )
+            raw_parameters = [
+                *path_parameters,
+                *(operation.get("parameters") or []),
+            ]
+            unresolved_parameters = [
+                str(item.get("$ref"))
+                for item in raw_parameters
+                if isinstance(item, dict)
+                and isinstance(item.get("$ref"), str)
+                and not item["$ref"].startswith("#/")
+            ]
+            if unresolved_parameters:
+                warn(
+                    f"{method.upper()} {path} 有未解析的參數 $ref："
+                    + ", ".join(unresolved_parameters[:3])
+                )
             parameters = _merge_parameters(
                 path_parameters,
                 operation.get("parameters") or [],
@@ -268,9 +294,11 @@ def parse_openapi_report(
             body, body_params = _build_body(operation, parameters, spec)
             if has_body and body is None:
                 unparsed_bodies += 1
+                body_ref = _unresolved_body_ref(operation)
+                detail = f"（$ref: {body_ref}）" if body_ref else ""
                 warn(
-                    f"{method.upper()} {path} 的 requestBody 沒有可解析的 JSON schema，"
-                    "body 參數已略過"
+                    f"{method.upper()} {path} 的 requestBody 沒有可解析的 JSON schema"
+                    f"{detail}，body 參數已略過"
                 )
             key = f"{method.upper()} {url}"
             endpoints[key] = Endpoint(
@@ -309,6 +337,27 @@ def parse_openapi_report(
     )
 
 
+def _unresolved_body_ref(operation: dict[str, Any]) -> str:
+    request_body = operation.get("requestBody")
+    if not isinstance(request_body, dict):
+        return ""
+    ref = request_body.get("$ref")
+    if isinstance(ref, str) and not ref.startswith("#/"):
+        return ref
+    content = request_body.get("content")
+    if not isinstance(content, dict):
+        return ""
+    for media in content.values():
+        if not isinstance(media, dict):
+            continue
+        schema = media.get("schema")
+        if isinstance(schema, dict):
+            schema_ref = schema.get("$ref")
+            if isinstance(schema_ref, str) and not schema_ref.startswith("#/"):
+                return schema_ref
+    return ""
+
+
 def _count_external_refs(value: Any, depth: int = 0) -> int:
     if depth > 8:
         return 0
@@ -325,18 +374,47 @@ def _count_external_refs(value: Any, depth: int = 0) -> int:
     return 0
 
 
-def _base_url(spec: dict[str, Any], scope: Scope) -> str:
-    servers = spec.get("servers")
-    if isinstance(servers, list) and servers:
-        raw = str((servers[0] or {}).get("url") or "").strip()
-        if raw:
-            return _strip_trailing(urljoin(scope.base_urls()[0], raw))
+def _base_url(
+    spec: dict[str, Any],
+    scope: Scope,
+    *,
+    servers: Any = None,
+) -> str:
+    candidates = servers if isinstance(servers, list) and servers else spec.get("servers")
+    if isinstance(candidates, list) and candidates:
+        for server in candidates:
+            if not isinstance(server, dict):
+                continue
+            raw = _server_url(server)
+            if raw:
+                return _strip_trailing(urljoin(scope.base_urls()[0], raw))
     if spec.get("host"):
         scheme = (spec.get("schemes") or ["https"])[0]
         return _strip_trailing(
             f"{scheme}://{spec.get('host')}{spec.get('basePath') or ''}"
         )
     return _strip_trailing(scope.base_urls()[0])
+
+
+def _server_url(server: dict[str, Any]) -> str:
+    raw = str(server.get("url") or "").strip()
+    if not raw:
+        return ""
+    variables = server.get("variables")
+    if not isinstance(variables, dict):
+        return raw
+    for name, definition in variables.items():
+        if not isinstance(definition, dict):
+            continue
+        value = definition.get("default")
+        if value is None:
+            choices = definition.get("enum")
+            if isinstance(choices, list) and choices:
+                value = choices[0]
+        if value is None:
+            continue
+        raw = raw.replace(f"{{{name}}}", str(value))
+    return raw
 
 
 def _strip_trailing(value: str) -> str:

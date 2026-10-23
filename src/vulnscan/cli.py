@@ -219,6 +219,41 @@ def scan_command(
         "--bola-auth-state",
         help="Second-account Playwright storage_state JSON for BOLA.",
     ),
+    bola_login_url: str = typer.Option(
+        "",
+        "--bola-login-url",
+        help="Second-account form login URL for BOLA.",
+    ),
+    bola_username: str = typer.Option(
+        "",
+        "--bola-username",
+        help="Second-account form login username for BOLA.",
+    ),
+    bola_password: str = typer.Option(
+        "",
+        "--bola-password",
+        help="Second-account form login password (prefer VULNSCAN_BOLA_PASSWORD).",
+    ),
+    bola_login_user_field: str = typer.Option(
+        "username",
+        "--bola-login-user-field",
+        help="Second-account username field name.",
+    ),
+    bola_login_pass_field: str = typer.Option(
+        "password",
+        "--bola-login-pass-field",
+        help="Second-account password field name.",
+    ),
+    bola_verify_url: str = typer.Option(
+        "",
+        "--bola-verify-url",
+        help="Second-account post-login verification URL.",
+    ),
+    bola_verify_text: str = typer.Option(
+        "",
+        "--bola-verify-text",
+        help="Second-account post-login verification text.",
+    ),
     bola_allow: list[str] = typer.Option(
         [],
         "--bola-allow",
@@ -372,21 +407,25 @@ def scan_command(
             bool(bola_auth_cookie),
             bool(bola_auth_header_name),
             bool(bola_auth_state),
+            bool(bola_login_url),
         ]
         if sum(bola_modes) != 1:
             typer.echo(
                 "--bola 需要且只能提供一種第二帳號認證："
-                "--bola-auth-cookie、--bola-auth-header-name 或 --bola-auth-state。",
+                "--bola-auth-cookie、--bola-auth-header-name、"
+                "--bola-auth-state 或 --bola-login-url。",
                 err=True,
             )
             raise typer.Exit(code=2)
+        bola_verify_url_value = bola_verify_url or auth_verify_url
+        bola_verify_text_value = bola_verify_text or auth_verify_text
         try:
             if bola_auth_cookie:
                 bola_auth = AuthConfig(
                     type=AuthType.COOKIE,
                     cookie=bola_auth_cookie,
-                    verify_url=auth_verify_url or None,
-                    verify_text=auth_verify_text or None,
+                    verify_url=bola_verify_url_value or None,
+                    verify_text=bola_verify_text_value or None,
                 )
             elif bola_auth_header_name:
                 if not bola_auth_header_value:
@@ -398,8 +437,35 @@ def scan_command(
                     type=AuthType.HEADER,
                     header_name=bola_auth_header_name,
                     header_value=bola_auth_header_value,
-                    verify_url=auth_verify_url or None,
-                    verify_text=auth_verify_text or None,
+                    verify_url=bola_verify_url_value or None,
+                    verify_text=bola_verify_text_value or None,
+                )
+            elif bola_login_url:
+                if not bola_username:
+                    typer.echo(
+                        "--bola-login-url 需要 --bola-username。",
+                        err=True,
+                    )
+                    raise typer.Exit(code=2)
+                if not bola_password:
+                    bola_password = os.environ.get(
+                        "VULNSCAN_BOLA_PASSWORD",
+                        "",
+                    )
+                if not bola_password:
+                    bola_password = typer.prompt(
+                        "BOLA password",
+                        hide_input=True,
+                    )
+                bola_auth = AuthConfig(
+                    type=AuthType.FORM,
+                    login_url=bola_login_url,
+                    username=bola_username,
+                    password=bola_password,
+                    username_field=bola_login_user_field,
+                    password_field=bola_login_pass_field,
+                    verify_url=bola_verify_url_value or None,
+                    verify_text=bola_verify_text_value or None,
                 )
             else:
                 assert bola_auth_state is not None
@@ -419,8 +485,8 @@ def scan_command(
                 bola_auth = AuthConfig(
                     type=AuthType.STATE,
                     storage_state=state_data,
-                    verify_url=auth_verify_url or None,
-                    verify_text=auth_verify_text or None,
+                    verify_url=bola_verify_url_value or None,
+                    verify_text=bola_verify_text_value or None,
                 )
         except ValueError as exc:
             typer.echo(f"BOLA 第二帳號設定錯誤：{exc}", err=True)

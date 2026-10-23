@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.0
+
+- Added BOLA/BFLA second-account form login in the GUI and CLI.
+- Added OpenAPI server variables with default/enum expansion.
+- Added operation-level and path-level `servers` precedence.
+- Added contextual warnings for unresolved parameter and request-body `$ref` values.
+- Updated GUI form validation and documentation.
+
 ## 0.25.1
 
 - Updated minimum dependency versions for FastAPI, Uvicorn, Pydantic, Playwright, and setuptools.

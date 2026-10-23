@@ -140,6 +140,16 @@
           return false;
         }
       }
+      if (type === "form") {
+        if (
+          !readValue("bola_login_url").trim() ||
+          !readValue("bola_username").trim() ||
+          !readValue("bola_password")
+        ) {
+          showError("BOLA 表單登入需要登入 URL、帳號與密碼。");
+          return false;
+        }
+      }
       const allowlist = readValue("bola_allowlist")
         .split(/\r?\n|,/)
         .map((item) => item.trim())
@@ -695,7 +705,8 @@
         none: "未設定第二帳號",
         cookie: "Cookie",
         header: "自訂 Header",
-        state: "Storage state"
+        state: "Storage state",
+        form: "表單登入"
       };
       const bolaAllowlist = readValue("bola_allowlist")
         .split(/\r?\n|,/)

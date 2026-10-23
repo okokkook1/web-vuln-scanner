@@ -95,6 +95,13 @@ def _default_form(settings: RuntimeSettings) -> dict:
         "bola_auth_cookie": "",
         "bola_auth_header_name": "Authorization",
         "bola_auth_header_value": "",
+        "bola_login_url": "",
+        "bola_username": "",
+        "bola_password": "",
+        "bola_login_user_field": "username",
+        "bola_login_pass_field": "password",
+        "bola_verify_url": "",
+        "bola_verify_text": "",
         "bola_allowlist": "",
         "bola_allow_all_ack": False,
         "max_bola_tests": 8,
@@ -146,6 +153,13 @@ def _form_values(form) -> dict:
         "bola_auth_cookie": "",
         "bola_auth_header_name": str(form.get("bola_auth_header_name") or ""),
         "bola_auth_header_value": "",
+        "bola_login_url": str(form.get("bola_login_url") or ""),
+        "bola_username": str(form.get("bola_username") or ""),
+        "bola_password": "",
+        "bola_login_user_field": str(form.get("bola_login_user_field") or "username"),
+        "bola_login_pass_field": str(form.get("bola_login_pass_field") or "password"),
+        "bola_verify_url": str(form.get("bola_verify_url") or ""),
+        "bola_verify_text": str(form.get("bola_verify_text") or ""),
         "bola_allowlist": str(form.get("bola_allowlist") or ""),
         "bola_allow_all_ack": str(form.get("bola_allow_all_ack") or "") == "on",
         "max_bola_tests": str(form.get("max_bola_tests") or "8"),
@@ -262,8 +276,16 @@ def _build_bola_auth(
         raise FormError("未知的 BOLA 第二帳號登入方式。") from exc
     if auth_type is AuthType.NONE:
         return None
-    verify_url = str(form.get("auth_verify_url") or "") or None
-    verify_text = str(form.get("auth_verify_text") or "") or None
+    verify_url = (
+        str(form.get("bola_verify_url") or "")
+        or str(form.get("auth_verify_url") or "")
+        or None
+    )
+    verify_text = (
+        str(form.get("bola_verify_text") or "")
+        or str(form.get("auth_verify_text") or "")
+        or None
+    )
     if auth_type is AuthType.COOKIE:
         return AuthConfig(
             type=auth_type,
@@ -288,7 +310,18 @@ def _build_bola_auth(
             verify_url=verify_url,
             verify_text=verify_text,
         )
-    raise FormError("BOLA 第二帳號僅支援 Cookie、Header 或 Storage state。")
+    if auth_type is AuthType.FORM:
+        return AuthConfig(
+            type=auth_type,
+            login_url=str(form.get("bola_login_url") or ""),
+            username=str(form.get("bola_username") or ""),
+            password=str(form.get("bola_password") or ""),
+            username_field=str(form.get("bola_login_user_field") or "username"),
+            password_field=str(form.get("bola_login_pass_field") or "password"),
+            verify_url=verify_url,
+            verify_text=verify_text,
+        )
+    raise FormError("BOLA 第二帳號僅支援 Cookie、Header、Storage state 或表單登入。")
 
 
 async def _read_openapi(form) -> tuple[dict | None, str | None]:

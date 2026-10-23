@@ -104,6 +104,55 @@ def _spec(base: str) -> dict:
     }
 
 
+def test_openapi_server_variables_and_path_operation_servers():
+    with fixture_server() as base:
+        spec = {
+            "openapi": "3.0.0",
+            "servers": [
+                {
+                    "url": base + "/{version}",
+                    "variables": {
+                        "version": {
+                            "default": "v1",
+                            "enum": ["v1", "v2"],
+                        }
+                    },
+                }
+            ],
+            "paths": {
+                "/root": {"get": {}},
+                "/path": {
+                    "servers": [{"url": base + "/path-base"}],
+                    "get": {},
+                },
+                "/op": {
+                    "servers": [{"url": base + "/path-base"}],
+                    "get": {},
+                    "post": {
+                        "servers": [{"url": base + "/op-base"}],
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {"q": {"type": "string"}},
+                                    }
+                                }
+                            }
+                        },
+                    },
+                },
+            },
+        }
+        config = make_config(base, openapi_spec=spec, allow_api_post=True)
+        report = parse_openapi_report(spec, build_scope(config), allow_post=True)
+        urls = {(endpoint.method, endpoint.url) for endpoint in report.endpoints}
+        assert ("GET", f"{base}/v1/root") in urls
+        assert ("GET", f"{base}/path-base/path") in urls
+        assert ("GET", f"{base}/path-base/op") in urls
+        assert ("POST", f"{base}/op-base/op") in urls
+
+
 def test_openapi_parser_builds_get_and_json_post_endpoints():
     with fixture_server() as base:
         config = make_config(
@@ -267,6 +316,40 @@ def test_openapi_report_warns_about_external_refs_methods_and_scope():
         assert outside_report.endpoints == []
         assert outside_report.stats["skipped_scope"] == 1
         assert any("scope" in warning for warning in outside_report.warnings)
+
+
+def test_openapi_reports_unresolved_parameter_and_body_refs():
+    with fixture_server() as base:
+        spec = {
+            "openapi": "3.0.0",
+            "servers": [{"url": base}],
+            "paths": {
+                "/parameters": {
+                    "get": {
+                        "parameters": [
+                            {"$ref": "https://refs.example/params.json#/id"}
+                        ]
+                    }
+                },
+                "/body": {
+                    "post": {
+                        "requestBody": {
+                            "$ref": "https://refs.example/body.json#/Body"
+                        }
+                    }
+                },
+            },
+        }
+        scope = build_scope(make_config(base, openapi_spec=spec))
+        report = parse_openapi_report(spec, scope, allow_post=True)
+        assert any(
+            "parameters" in warning and "參數 $ref" in warning
+            for warning in report.warnings
+        )
+        assert any(
+            "requestBody" in warning and "body.json" in warning
+            for warning in report.warnings
+        )
 
 
 def test_post_allowlist_filters_and_preview_marks_allowed():

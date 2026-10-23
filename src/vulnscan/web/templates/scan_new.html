@@ -357,7 +357,7 @@
         <label class="field" style="max-width:360px">
           <span class="field-label">第二帳號登入方式</span>
           <select class="select" name="bola_auth_type" id="bola-auth-type">
-            {% for value, label in [('none','未設定'), ('cookie','Cookie'), ('header','自訂 Header'), ('state','Storage state')] %}
+            {% for value, label in [('none','未設定'), ('cookie','Cookie'), ('header','自訂 Header'), ('state','Storage state'), ('form','表單登入')] %}
             <option value="{{ value }}" {{ 'selected' if f.bola_auth_type == value else '' }}>{{ label }}</option>
             {% endfor %}
           </select>
@@ -388,7 +388,49 @@
           <label class="field">
             <span class="field-label">第二帳號 Storage State JSON</span>
             <input class="input" type="file" name="bola_auth_state_file" accept=".json,application/json">
-            <div class="hint">會依 scope 擷取 Cookie；不支援第二帳號表單／瀏覽器互動登入。</div>
+            <div class="hint">會依 scope 擷取 Cookie；表單登入請改用「表單登入」。</div>
+          </label>
+        </div>
+        <div data-bola-panel="form" hidden>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">第二帳號登入 URL</span>
+              <input class="input" type="text" name="bola_login_url"
+                value="{{ f.bola_login_url }}" placeholder="/login">
+            </label>
+            <label class="field">
+              <span class="field-label">帳號</span>
+              <input class="input" type="text" name="bola_username"
+                value="{{ f.bola_username }}" autocomplete="off">
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">密碼</span>
+              <input class="input" type="password" name="bola_password" autocomplete="new-password">
+            </label>
+            <label class="field">
+              <span class="field-label">帳號欄位名稱</span>
+              <input class="input" type="text" name="bola_login_user_field"
+                value="{{ f.bola_login_user_field }}">
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">密碼欄位名稱</span>
+              <input class="input" type="text" name="bola_login_pass_field"
+                value="{{ f.bola_login_pass_field }}">
+            </label>
+            <label class="field">
+              <span class="field-label">登入後驗證文字 <span class="opt">選填</span></span>
+              <input class="input" type="text" name="bola_verify_text"
+                value="{{ f.bola_verify_text }}" placeholder="例如：登出">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">登入後驗證 URL <span class="opt">選填</span></span>
+            <input class="input" type="text" name="bola_verify_url"
+              value="{{ f.bola_verify_url }}" placeholder="/dashboard">
           </label>
         </div>
 

@@ -678,7 +678,7 @@ vulnscan rules list
 
 ---
 
-## 17. 實作狀態（v0.25.1）
+## 17. 實作狀態（v0.26）
 
 | 階段 | 狀態 | 說明 |
 |---|---|---|
@@ -690,7 +690,7 @@ vulnscan rules list
 | M5 測試與文件 | ✅ 完成 | pytest 靶場、README、範例 scope |
 | 登入後掃描 | ✅ 完成 | Cookie、自訂 Header、表單登入、storage state、GUI 啟動 Playwright（SSO／MFA） |
 | 掃描 Diff／抑制 | ✅ 完成 | 新增／已修復／未變、跨掃描 fingerprint 抑制、GUI 與 CLI |
-| API 掃描 | ✅ 完成 | OpenAPI 3.1／3.0／Swagger 2 檔案或 URL（同 scope redirect）、scope 內外部 `$ref`、spec fingerprint／drift、認證感知預覽與 session 檢查、端點勾選與 host-aware 白名單、空白名單明確確認、請求 manifest、匯入 warning／統計、報告保存已選端點與 manifest 摘要、BOLA／BFLA 雙帳號唯讀（GET 白名單與全部確認、JSON 結構比較、每端點結果矩陣、Diff）、共用 rate limiter／request budget、表單登入 session 恢復、API 測試 budget／每端點與每檢查結果矩陣／Coverage Diff、巢狀 JSON、XSS／錯誤型與重試確認的布林型 SQLi／SSRF |
+| API 掃描 | ✅ 完成 | OpenAPI 3.1／3.0／Swagger 2 檔案或 URL（同 scope redirect）、scope 內外部 `$ref`、server variables、path／operation 層級 servers、spec fingerprint／drift、認證感知預覽與 session 檢查、端點勾選與 host-aware 白名單、空白名單明確確認、請求 manifest、匯入 warning／統計、報告保存已選端點與 manifest 摘要、BOLA／BFLA 雙帳號唯讀（第二帳號 Cookie／Header／State／表單登入、GET 白名單與全部確認、JSON 結構比較、每端點結果矩陣、Diff）、共用 rate limiter／request budget、表單登入 session 恢復、API 測試 budget／每端點與每檢查結果矩陣／Coverage Diff、巢狀 JSON、XSS／錯誤型與重試確認的布林型 SQLi／SSRF |
 | 弱點驗證與交付 | ✅ 完成 | 待確認／已確認／誤報／接受風險、fingerprint 跨掃描狀態與一次性回填、fingerprint 索引與 `user_version` migration、跨掃描歷史頁、接受風險到期、嚴重度升級／證據改變自動重開、誤報／接受風險備註政策、篩選與批次更新、驗證歷程、Dashboard 統計、Diff 依跨掃描 review status 分流、目標 baseline、CLI `baseline set／show／clear`、掃描趨勢頁、驗證工作台（跨掃描去重／篩選／到期提醒）、CLI `--fail-on` regression gate、HTML／JSON 報告、CI coverage 門檻／wheel 安裝 smoke／baseline gate fixture／真正 scan E2E、Dependabot、可選 Playwright GUI 吸菸測試 |
 | YAML 自訂規則 | ⏳ 未做 | 目前為內建 Python 檢查 |
 | SARIF / DefectDojo | ⏳ 未做 | 依需求再加 |

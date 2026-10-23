@@ -21,9 +21,9 @@
 - 掃描趨勢：每個目標的近期新增、修復、未測、已排除與驗證狀態變化
 - CI regression gate：`vulnscan diff --fail-on ...` 可依新增／已確認／待確認／已排除項目回傳非 0
 - 跨掃描抑制：以 rule＋method＋host＋path＋參數為 fingerprint，需填寫原因
-- OpenAPI 3.1／3.0／Swagger 2 匯入：檔案或 URL、同 scope redirect、scope 內外部 `$ref`、可勾選端點、host-aware 白名單、spec fingerprint／drift 偵測、請求 manifest、匯入 warning 與報告紀錄
+- OpenAPI 3.1／3.0／Swagger 2 匯入：檔案或 URL、同 scope redirect、scope 內外部 `$ref`、server variables、path／operation 層級 servers、可勾選端點、host-aware 白名單、spec fingerprint／drift 偵測、請求 manifest、匯入 warning 與報告紀錄
 - JSON API 主動檢查（需明確開啟）：巢狀參數、反射注入、錯誤型／布林型 SQLi、SSRF callback；測試前會檢查登入 session 有效性
-- BOLA／BFLA 雙帳號唯讀檢查：GET 白名單（留空需明確確認）、每端點結果矩陣、JSON 結構比較、Diff；不枚舉 ID、不保存他人回應內容
+- BOLA／BFLA 雙帳號唯讀檢查：第二帳號支援 Cookie／Header／Storage state／表單登入，GET 白名單（留空需明確確認）、每端點結果矩陣、JSON 結構比較、Diff；不枚舉 ID、不保存他人回應內容
 - 主要／第二／未登入 client 共用 rate limiter 與 request budget，BOLA 請求即時計入總量
 - API 測試 budget 可設定，報告會列出每個 POST 端點的已測／跳過原因
 - API／BOLA Coverage Diff：區分「本次未測」與「已修復」，避免 coverage 下降被誤判
@@ -325,20 +325,21 @@ vulnscan unsuppress --finding 42
 UI 的「API 掃描（OpenAPI 匯入）」可上傳 OpenAPI 3.1／3.0 或 Swagger 2 的 JSON/YAML，或直接填寫規格 URL：
 
 - 自動依 `servers`／`host` 建立端點
+- 支援 server variables 的 `default`／`enum` 展開，以及 operation／path 層級 servers 優先於根層級
 - 支援 OpenAPI 3.1、`allOf`、`oneOf`／`anyOf` 的第一個可解析分支、`const`、`examples` 與型別聯集
 - 匯入 GET 查詢參數與 POST JSON body 範例；巢狀物件與陣列會展開成 `user.name`、`items[0].id` 等參數
 - OpenAPI URL 會在登入後以目前 session 取得，主機必須在授權 scope 內；支援最多 3 次同 scope redirect
 - UI 的「預覽 POST 端點」會使用目前設定的登入方式取得規格；表單登入預覽會實際登入一次
 - 預覽表可**逐項勾選端點**，按「套用到白名單」自動產生 host-aware 的 `POST https://host/path` 清單
 - 預覽會顯示**實際請求 manifest**：URL、Content-Type、JSON body 與會被 canary 替換的欄位
-- 預覽會顯示匯入統計與 warnings（例如外部 `$ref`、略過 scope、其他 HTTP method、無法解析的 body）
+- 預覽會顯示匯入統計與 warnings（例如外部 `$ref`、略過 scope、其他 HTTP method、無法解析的參數／body `$ref`，並標出 method 與 path）
 - 預覽會計算 **spec fingerprint**；實際掃描會重新計算，若與預覽不同就保留匯入結果但**略過 API POST 測試**
 - 支援 scope 內 HTTP(S) 外部 `$ref`（最多 8 個外部文件、100 個 ref）；scope 外或 local file ref 只會產生 warning
 - `POST 端點白名單`可限制 API POST 檢查的目標；支援 `POST https://host/api/items/*`、`POST /api/items/*` 等 pattern
 - **白名單留空時必須另外勾選「我確認測試所有 POST 端點」**，否則無法建立掃描
 - 掃描報告會記錄已選端點、manifest 摘要、白名單、全部測試確認狀態、spec fingerprint、session 檢查與 OpenAPI warnings
 - API POST 測試前會檢查登入 session；401／403、導向登入頁或驗證文字消失時會略過 API POST 並記錄原因
-- **BOLA／BFLA** 需另外勾選並提供第二帳號，支援第二帳號 Cookie、Header 或 Storage State
+- **BOLA／BFLA** 需另外勾選並提供第二帳號，支援第二帳號 Cookie、Header、Storage State 或表單登入
 - BOLA 只對具有 ID／UUID 參數的 GET 做唯讀比較；BFLA 檢查 admin／manage／internal／role 等管理 GET
 - GET 白名單留空時必須另外確認「測試所有候選 GET」，建議限制到授權物件路徑
 - BOLA／BFLA 會先確認未登入請求被拒絕，再比較主要／第二帳號的狀態與回應形狀；JSON 優先比較結構而非實際值
@@ -393,6 +394,15 @@ vulnscan scan --url https://api.example.com --profile safe `
   --max-api-tests 30 --max-bola-tests 8 `
   --acknowledge-authorized
 
+# 第二帳號使用表單登入
+vulnscan scan --url https://api.example.com --profile safe `
+  --auth-cookie "session=primary" `
+  --bola --bola-login-url "/login" `
+  --bola-username reviewer --bola-password "secondary-password" `
+  --bola-verify-text "登出" `
+  --bola-allow "GET https://api.example.com/orders/*" `
+  --acknowledge-authorized
+
 # 白名單留空時，必須明確確認測試所有 BOLA 候選 GET
 vulnscan scan --url https://api.example.com --profile safe `
   --auth-cookie "session=primary" `
@@ -415,7 +425,7 @@ vulnscan scan --url https://api.example.com --profile safe `
 - 外部 `$ref` 僅支援 HTTP(S)，且必須在授權 scope 內；local file ref 與 scope 外 ref 會 warning
 - 檔案上傳規格的相對外部 `$ref` 沒有可靠 base URL，通常會 warning；請使用絕對 URL 或 URL 匯入
 - 檔案預覽的外部 `$ref` 不帶登入 session；需要認證的外部文件請使用 URL 匯入，或把 schema 一起打包在檔案內
-- BOLA／BFLA 第二帳號 UI 支援 Cookie、Header 與 Storage state；第二帳號不支援表單／瀏覽器互動登入
+- BOLA／BFLA 第二帳號 UI 支援 Cookie、Header、Storage state 與表單登入；不支援第二帳號瀏覽器互動登入
 - BOLA 只測試具有數字／UUID／ID 參數的 GET；BFLA 只測試管理語意路徑；結果仍可能需要人工確認角色與 ownership
 - Session 自動恢復目前只支援表單登入，且每次掃描最多嘗試一次
 - 不支援 multipart、GraphQL、XML body 或檔案上傳欄位

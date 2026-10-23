@@ -15,6 +15,7 @@ from vulnscan.http import HttpEngine
 from vulnscan.jobs.manager import Job, JobManager, JobState
 from vulnscan.models import AuthConfig, AuthType, Scan, new_scan_id
 from vulnscan.scope import build_scope
+from vulnscan.web.routes.scans import _build_bola_auth
 
 from .fixture_server import fixture_server
 from .helpers import make_config
@@ -143,6 +144,27 @@ async def test_storage_state_uses_cookies_and_localstorage_token(tmp_path: Path)
     assert "token-123" not in str(scope.snapshot())
 
 
+async def test_second_account_form_login_materials(tmp_path: Path):
+    with fixture_server() as base:
+        config = make_config(
+            base,
+            auth=AuthConfig(type=AuthType.COOKIE, cookie="auth=primary"),
+            enable_bola=True,
+            bola_ack=True,
+            bola_auth=_form_auth(),
+            bola_allow_all_ack=True,
+        )
+        scope = build_scope(config)
+        bola_config = config.model_copy(update={"auth": config.bola_auth})
+        audit = AuditLogger(tmp_path / "bola-auth.jsonl", "bola_auth")
+        try:
+            materials = await prepare_auth(bola_config, scope, audit)
+        finally:
+            audit.close()
+
+    assert materials.cookies.get("auth") == "ok"
+
+
 async def test_bad_password_fails_login(tmp_path: Path):
     with fixture_server() as base:
         config = make_config(base, auth=_form_auth(password="wrong"))
@@ -188,6 +210,31 @@ async def test_authenticated_scan_crawls_private_area(tmp_path: Path):
     scope_text = (tmp_path / "scans" / scan_id / "scope.yaml").read_text(encoding="utf-8")
     assert "demo123" not in scope_text
     assert "auth=ok" not in scope_text
+
+
+def test_bola_form_auth_builder_supports_second_account_login():
+    form = {
+        "bola_auth_type": "form",
+        "bola_login_url": "/login",
+        "bola_username": "reviewer",
+        "bola_password": "secret",
+        "bola_login_user_field": "email",
+        "bola_login_pass_field": "pass",
+        "bola_verify_url": "/dashboard",
+        "bola_verify_text": "Welcome",
+        "auth_verify_url": "",
+        "auth_verify_text": "",
+    }
+    auth = _build_bola_auth(form, None)
+    assert auth is not None
+    assert auth.type is AuthType.FORM
+    assert auth.login_url == "/login"
+    assert auth.username == "reviewer"
+    assert auth.password == "secret"
+    assert auth.username_field == "email"
+    assert auth.password_field == "pass"
+    assert auth.verify_url == "/dashboard"
+    assert auth.verify_text == "Welcome"
 
 
 def test_job_scrub_removes_credentials():
