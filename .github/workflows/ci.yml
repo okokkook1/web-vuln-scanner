@@ -33,7 +33,7 @@ jobs:
           echo "cli help ok"
           vulnscan rules > /dev/null
           echo "rules command ok"
-          python -c "import subprocess, sys; r = subprocess.run([sys.executable, '-m', 'vulnscan', 'diff', '--help'], capture_output=True, text=True); assert r.returncode == 0, r.stderr; assert '--fail-on' in r.stdout, r.stdout; print('diff help ok')"
+          python -c "import os, re, subprocess, sys; r = subprocess.run([sys.executable, '-m', 'vulnscan', 'diff', '--help'], capture_output=True, text=True, env={**os.environ, 'NO_COLOR': '1', 'TERM': 'dumb'}); text = re.sub(r'\x1b\[[0-9;]*m', '', r.stdout); assert r.returncode == 0, r.stderr; assert '--fail-on' in text, text; print('diff help ok')"
       - name: Seed diff gate fixture
         run: python scripts/ci_gate_fixture.py --data-dir /tmp/vulnscan-ci-gate
       - name: Diff gate fails on confirmed regression
