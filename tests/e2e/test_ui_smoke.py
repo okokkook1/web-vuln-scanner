@@ -71,6 +71,8 @@ def test_new_scan_api_and_bola_controls(tmp_path: Path):
                 page.check('[name="bola_ack"]')
                 page.check('[name="bola_allow_all_ack"]')
                 assert page.locator('[name="bola_auth_cookie"]').is_visible()
+                page.goto(f"http://127.0.0.1:{port}/review")
+                assert "驗證工作台" in page.content()
             finally:
                 browser.close()
     finally:

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-primary" href="/scans/new">＋ 新增掃描</a>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>驗證工作台</h2>
+      <p>依 fingerprint 跨掃描去重；預設只顯示待確認的有效發現。</p>
+    </div>
+    <span class="badge category">{{ total_fingerprints }} 個 fingerprint</span>
+  </div>
+
+  <form method="get" class="filters">
+    <label class="field">
+      <span class="field-label">驗證狀態</span>
+      <select class="select" name="status">
+        <option value="all" {{ 'selected' if filters.status == 'all' else '' }}>全部</option>
+        {% for value in statuses %}
+        <option value="{{ value }}" {{ 'selected' if filters.status == value else '' }}>
+          {{ value | review_label }}（{{ counts.get(value, 0) }}）
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">嚴重度</span>
+      <select class="select" name="severity">
+        <option value="">全部</option>
+        {% for key in severity_order %}
+        <option value="{{ key }}" {{ 'selected' if filters.severity == key else '' }}>{{ key | severity_label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">目標</span>
+      <select class="select" name="target">
+        <option value="">全部</option>
+        {% for target in targets %}
+        <option value="{{ target }}" {{ 'selected' if filters.target == target else '' }}>{{ target }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="row actions">
+      <button class="btn btn-primary" type="submit">套用</button>
+      <a class="btn btn-ghost" href="/review">清除</a>
+    </div>
+  </form>
+</section>
+
+<div class="stat-grid">
+  <div class="stat-card medium">
+    <div class="stat-label">待確認</div>
+    <div class="stat-value">{{ counts.needs_review }}</div>
+  </div>
+  <div class="stat-card high">
+    <div class="stat-label">高風險以上待確認</div>
+    <div class="stat-value">{{ high_priority }}</div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">已確認</div>
+    <div class="stat-value">{{ counts.confirmed }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">誤報</div>
+    <div class="stat-value">{{ counts.false_positive }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">接受風險</div>
+    <div class="stat-value">{{ counts.accepted_risk }}</div>
+  </div>
+  <div class="stat-card high">
+    <div class="stat-label">已到期接受風險</div>
+    <div class="stat-value">{{ expired_risks | length }}</div>
+  </div>
+</div>
+
+{% if expired_risks or expiring_risks %}
+<section class="card flush" style="margin-top:18px">
+  <div class="card-head" style="padding:18px 20px 0">
+    <div>
+      <h2>接受風險期限</h2>
+      <p>已到期或 30 天內到期的 accepted risk。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>狀態</th><th>嚴重度</th><th>弱點</th><th>目標</th><th>到期日</th><th></th></tr></thead>
+      <tbody>
+      {% for row in expired_risks + expiring_risks %}
+        <tr>
+          <td>
+            {% if row.expiry_state == 'expired' %}
+            <span class="badge high">已到期</span>
+            {% else %}
+            <span class="badge medium">即將到期</span>
+            {% endif %}
+          </td>
+          <td><span class="badge {{ row.finding.severity }}">{{ row.finding.severity | severity_label }}</span></td>
+          <td>
+            <a href="/findings/{{ row.finding.id }}"><strong>{{ row.finding.title }}</strong></a>
+            <div class="muted small mono">{{ row.fingerprint }}</div>
+          </td>
+          <td class="mono small">{{ row.targets | join('、') }}</td>
+          <td class="nowrap">{{ row.finding.review_expires_at | dt }}</td>
+          <td><a class="btn btn-ghost btn-sm" href="/findings/{{ row.finding.id }}">處理</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="card flush" style="margin-top:18px">
+  <div class="card-head" style="padding:18px 20px 0">
+    <div>
+      <h2>佇列（{{ rows | length }}）</h2>
+      <p>每個 fingerprint 只顯示最近一次出現；狀態沿用到所有掃描。</p>
+    </div>
+  </div>
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>嚴重度</th>
+          <th>弱點</th>
+          <th>目標</th>
+          <th>最近出現</th>
+          <th>出現</th>
+          <th>驗證</th>
+          <th>備註／更新者</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td><span class="badge {{ row.finding.severity }}">{{ row.finding.severity | severity_label }}</span></td>
+          <td>
+            <a href="/findings/{{ row.finding.id }}"><strong>{{ row.finding.title }}</strong></a>
+            <div class="muted small mono">
+              {{ row.finding.rule_id }} ·
+              <a href="/fingerprints?fingerprint={{ row.fingerprint | urlencode }}">跨掃描歷史</a>
+            </div>
+            <div class="muted small mono">{{ row.finding.method }} {{ row.finding.url }}{% if row.finding.parameter %} · {{ row.finding.parameter }}{% endif %}</div>
+          </td>
+          <td class="small">
+            {% if row.targets %}
+            {{ row.targets[0] }}{% if row.targets | length > 1 %} <span class="muted">+{{ row.targets | length - 1 }}</span>{% endif %}
+            {% else %}—{% endif %}
+            <div class="muted">{{ row.scan_count }} 次掃描</div>
+          </td>
+          <td class="nowrap">{{ row.last_seen | dt }}<div class="muted small">首次 {{ row.first_seen | dt }}</div></td>
+          <td class="nums">{{ row.occurrence_count }}</td>
+          <td><span class="badge category">{{ row.finding.review_status | review_label }}</span></td>
+          <td class="small">
+            {{ row.finding.review_note or '—' }}
+            {% if row.finding.review_updated_by %}
+            <div class="muted">更新者：{{ row.finding.review_updated_by }}</div>
+            {% endif %}
+            {% if row.finding.review_expires_at %}
+            <div class="muted">到期：{{ row.finding.review_expires_at | dt }}</div>
+            {% endif %}
+          </td>
+          <td class="nowrap" style="text-align:right">
+            <a class="btn btn-primary btn-sm" href="/findings/{{ row.finding.id }}">處理</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:30px">
+    <div class="icon">✓</div>
+    <h3>目前沒有符合條件的項目</h3>
+    <p>切換狀態或清除篩選條件以查看更多。</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

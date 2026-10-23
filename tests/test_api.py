@@ -875,6 +875,16 @@ def test_baseline_and_trends_pages(tmp_path: Path):
         assert new_scan.id in trends.text
         assert "已確認新增" in trends.text
 
+        review = client.get("/review")
+        assert review.status_code == 200
+        assert "驗證工作台" in review.text
+        assert "待確認" in review.text
+        assert "rule-baseline-new" in review.text
+        assert "rule-baseline-old" in review.text
+        review_confirmed = client.get("/review?status=all&severity=high")
+        assert review_confirmed.status_code == 200
+        assert "rule-baseline-new" in review_confirmed.text
+
         cleared = client.post(
             f"/scans/{new_scan.id}/baseline/clear",
             data={"csrf_token": token},

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from ...checks import CHECK_CATALOG
 from ...config import RuntimeSettings
+from ...models import REVIEW_STATUSES
 from ...presentation import severity_order
 from ..security import verify_csrf
 from .common import get_db, render
@@ -39,6 +40,36 @@ async def dashboard(request: Request):
         recent=recent,
         severity_total=severity_total,
         severity_order=severity_order(),
+    )
+
+
+@router.get("/review")
+async def review_workbench_page(request: Request):
+    db = get_db(request)
+    status = request.query_params.get("status") or "needs_review"
+    if status not in (*REVIEW_STATUSES, "all"):
+        status = "needs_review"
+    severity = request.query_params.get("severity") or None
+    if severity not in severity_order():
+        severity = None
+    target = (request.query_params.get("target") or "").strip() or None
+    data = db.review_workbench(
+        status=status,
+        severity=severity,
+        target=target,
+    )
+    return render(
+        request,
+        "review.html",
+        active="review",
+        page_title="驗證工作台",
+        page_subtitle=(
+            f"待確認 {data['counts']['needs_review']} · "
+            f"高風險以上 {data['high_priority']}"
+        ),
+        severity_order=severity_order(),
+        statuses=REVIEW_STATUSES,
+        **data,
     )
 
 

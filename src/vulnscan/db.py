@@ -495,12 +495,18 @@ class Database:
         fingerprints = {finding_fingerprint(row) for row in rows}
         if not fingerprints:
             return {}
+        reviews: list[FindingReviewState] = []
         with self.session() as session:
-            reviews = session.exec(
-                select(FindingReviewState).where(
-                    FindingReviewState.fingerprint.in_(fingerprints)
+            values = sorted(fingerprints)
+            for start in range(0, len(values), 400):
+                chunk = values[start : start + 400]
+                reviews.extend(
+                    session.exec(
+                        select(FindingReviewState).where(
+                            FindingReviewState.fingerprint.in_(chunk)
+                        )
+                    ).all()
                 )
-            ).all()
         return {review.fingerprint: review for review in reviews}
 
     def _views(
@@ -824,6 +830,141 @@ class Database:
             "occurrence_count": len(rows),
             "scan_count": len(scan_ids),
             "severity_counts": severity_counts,
+        }
+
+    def review_workbench(
+        self,
+        *,
+        status: str = "needs_review",
+        severity: str | None = None,
+        target: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        with self.session() as session:
+            rows = list(
+                session.exec(
+                    select(FindingRecord).order_by(
+                        FindingRecord.created_at.desc(),
+                        FindingRecord.id.desc(),
+                    )
+                ).all()
+            )
+            scans = {
+                scan.id: scan
+                for scan in session.exec(select(Scan)).all()
+            }
+        groups: dict[str, dict[str, Any]] = {}
+        for view in self._views(rows, self.suppression_map()):
+            if view.suppressed:
+                continue
+            fingerprint = finding_fingerprint(view)
+            scan = scans.get(view.scan_id)
+            seen_at = _as_utc(scan.created_at if scan else view.created_at)
+            targets = _loads(scan.targets_json, []) if scan else []
+            known = groups.get(fingerprint)
+            if known is None:
+                groups[fingerprint] = {
+                    "finding": view,
+                    "fingerprint": fingerprint,
+                    "occurrence_count": 1,
+                    "scan_count": 1,
+                    "scan_ids": {view.scan_id},
+                    "first_seen": seen_at,
+                    "last_seen": seen_at,
+                    "targets": targets,
+                }
+                continue
+            known["occurrence_count"] += 1
+            if view.scan_id not in known["scan_ids"]:
+                known["scan_ids"].add(view.scan_id)
+                known["scan_count"] += 1
+            if seen_at < known["first_seen"]:
+                known["first_seen"] = seen_at
+            if seen_at > known["last_seen"]:
+                known["finding"] = view
+                known["last_seen"] = seen_at
+                known["targets"] = targets
+
+        counts = {item: 0 for item in REVIEW_STATUSES}
+        high_priority = 0
+        now = utcnow()
+        expired: list[dict[str, Any]] = []
+        expiring: list[dict[str, Any]] = []
+        for item in groups.values():
+            view = item["finding"]
+            counts[view.review_status] = counts.get(view.review_status, 0) + 1
+            if (
+                view.review_status == "needs_review"
+                and view.severity in ("critical", "high")
+            ):
+                high_priority += 1
+            expires = _as_utc(view.review_expires_at)
+            if view.review_status != "accepted_risk" or not expires:
+                continue
+            seconds = (expires - now).total_seconds()
+            if seconds <= 0:
+                expired.append(item)
+            elif seconds <= 30 * 24 * 60 * 60:
+                expiring.append(item)
+
+        filtered = []
+        for item in groups.values():
+            view = item["finding"]
+            if status and status != "all" and view.review_status != status:
+                continue
+            if severity and view.severity != severity:
+                continue
+            if target and target not in item["targets"]:
+                continue
+            filtered.append(item)
+        rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+        def sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
+            seen = item["last_seen"]
+            timestamp = (
+                seen.timestamp()
+                if seen.tzinfo is not None
+                else seen.replace(tzinfo=UTC).timestamp()
+            )
+            return (
+                rank.get(item["finding"].severity, 9),
+                -timestamp,
+                item["finding"].rule_id,
+            )
+
+        filtered.sort(key=sort_key)
+        for item in expired:
+            item["expiry_state"] = "expired"
+        for item in expiring:
+            item["expiry_state"] = "expiring"
+        expired.sort(
+            key=lambda item: _as_utc(item["finding"].review_expires_at)
+            or now
+        )
+        expiring.sort(
+            key=lambda item: _as_utc(item["finding"].review_expires_at)
+            or now
+        )
+        targets = sorted(
+            {
+                value
+                for scan in scans.values()
+                for value in _loads(scan.targets_json, [])
+            }
+        )
+        return {
+            "rows": filtered[:limit],
+            "counts": counts,
+            "total_fingerprints": len(groups),
+            "high_priority": high_priority,
+            "expired_risks": expired,
+            "expiring_risks": expiring,
+            "targets": targets,
+            "filters": {
+                "status": status,
+                "severity": severity or "",
+                "target": target or "",
+            },
         }
 
     def review_status_counts(

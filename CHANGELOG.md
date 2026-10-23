@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.0
+
+- Added a `/review` workbench that deduplicates findings by fingerprint across scans.
+- Added status, severity, and target filters plus high-risk and expiry summaries.
+- Added accepted-risk expiry warnings for expired and soon-to-expire decisions.
+- Added navigation from the dashboard and sidebar.
+- Hardened review-state lookups for large histories.
+
 ## 0.24.0
 
 - Added CLI commands for target baselines: `baseline set`, `show`, and `clear`.
