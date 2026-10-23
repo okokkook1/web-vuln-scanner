@@ -1,5 +1,7 @@
 # VulnScan
 
+[![CI](https://github.com/okokkook1/web-vuln-scanner/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/okokkook1/web-vuln-scanner/actions/workflows/ci.yml)
+
 授權導向、非破壞性的網站弱點掃描器。以**本機 Web UI** 為主，支援 HTML + JSON 報告。
 
 > **僅限已取得書面授權的目標。** 本工具不會執行漏洞利用、密碼爆破、資料竊取或阻斷服務。
