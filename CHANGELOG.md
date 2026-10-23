@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.1
+
+- Updated minimum dependency versions for FastAPI, Uvicorn, Pydantic, Playwright, and setuptools.
+- Merged the first Dependabot maintenance updates.
+
 ## 0.25.0
 
 - Added a `/review` workbench that deduplicates findings by fingerprint across scans.
