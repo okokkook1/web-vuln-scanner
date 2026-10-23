@@ -28,6 +28,11 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+baseline_app = typer.Typer(
+    name="baseline",
+    help="Manage the stored baseline for a target.",
+)
+app.add_typer(baseline_app, name="baseline")
 
 
 @app.command()
@@ -650,6 +655,77 @@ def diff_command(
             )
     if failed:
         raise typer.Exit(code=1)
+
+
+@baseline_app.command("set")
+def baseline_set_command(
+    scan: str = typer.Option(..., "--scan", help="Scan ID to store as the target baseline."),
+    created_by: str = typer.Option("local", "--created-by"),
+    data_dir: Path | None = typer.Option(None, "--data-dir"),
+) -> None:
+    """Store a completed scan as the baseline for its target."""
+    db = _cli_db(data_dir)
+    target = db.get_scan(scan)
+    if not target:
+        typer.echo(f"找不到掃描：{scan}", err=True)
+        raise typer.Exit(code=2)
+    baseline = db.set_baseline(scan, created_by)
+    if not baseline:
+        typer.echo("只有已完成或取消的掃描可以設為 baseline。", err=True)
+        raise typer.Exit(code=2)
+    typer.echo(f"已設定 baseline：{scan}")
+    typer.echo(f"目標數：{len(json.loads(baseline.targets_json or '[]'))}")
+    typer.echo(f"建立者：{baseline.created_by}")
+
+
+@baseline_app.command("show")
+def baseline_show_command(
+    scan: str = typer.Option(..., "--scan", help="Scan ID whose target baseline should be shown."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    data_dir: Path | None = typer.Option(None, "--data-dir"),
+) -> None:
+    """Show the stored baseline for a scan's target."""
+    db = _cli_db(data_dir)
+    target = db.get_scan(scan)
+    if not target:
+        typer.echo(f"找不到掃描：{scan}", err=True)
+        raise typer.Exit(code=2)
+    baseline = db.get_baseline_for_scan(target)
+    payload = {
+        "scan": scan,
+        "targets": json.loads(target.targets_json or "[]"),
+        "baseline": baseline.id if baseline else None,
+        "is_self": bool(baseline and baseline.id == scan),
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    if not baseline:
+        typer.echo("此目標尚未設定 baseline。")
+        return
+    typer.echo(f"目前 baseline：{baseline.id}")
+    if baseline.id == scan:
+        typer.echo("（此掃描本身就是 baseline）")
+    typer.echo("目標：")
+    for item in payload["targets"]:
+        typer.echo(f"  - {item}")
+
+
+@baseline_app.command("clear")
+def baseline_clear_command(
+    scan: str = typer.Option(..., "--scan", help="Scan ID whose target baseline should be cleared."),
+    data_dir: Path | None = typer.Option(None, "--data-dir"),
+) -> None:
+    """Clear the stored baseline for a scan's target."""
+    db = _cli_db(data_dir)
+    target = db.get_scan(scan)
+    if not target:
+        typer.echo(f"找不到掃描：{scan}", err=True)
+        raise typer.Exit(code=2)
+    if db.remove_baseline_for_scan(scan):
+        typer.echo(f"已清除 baseline：{scan}")
+    else:
+        typer.echo("此目標沒有 baseline。")
 
 
 @app.command("suppress")

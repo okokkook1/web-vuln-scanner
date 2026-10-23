@@ -53,6 +53,17 @@ jobs:
       - name: Diff gate passes on pending finding
         run: |
           vulnscan diff --current ci_gate_pass_current --baseline --fail-on new_confirmed --data-dir /tmp/vulnscan-ci-gate
+      - name: Real scan -> baseline -> diff gate
+        run: |
+          python scripts/ci_scan_gate_fixture.py \
+            --data-dir /tmp/vulnscan-scan-e2e \
+            --out /tmp/vulnscan-scan-e2e-reports
+      - name: Upload real scan reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: scan-e2e-reports
+          path: /tmp/vulnscan-scan-e2e-reports
+          if-no-files-found: error
 
   e2e:
     runs-on: ubuntu-latest

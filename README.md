@@ -17,6 +17,7 @@
 - 完整模式（需逐項確認）：布林型 SQL Injection、路徑遍歷錯誤訊息偵測、SSRF callback 驗證
 - 登入後掃描：Cookie、自訂 Header、表單登入、GUI／CLI 瀏覽器互動（SSO／MFA／localStorage）
 - 掃描 Diff：新增／已修復／未變／本次未測／已排除，可選擇前次掃描或設定目標 baseline
+- CLI baseline：`vulnscan baseline set／show／clear`，可放進 CI 或排程
 - 掃描趨勢：每個目標的近期新增、修復、未測、已排除與驗證狀態變化
 - CI regression gate：`vulnscan diff --fail-on ...` 可依新增／已確認／待確認／已排除項目回傳非 0
 - 跨掃描抑制：以 rule＋method＋host＋path＋參數為 fingerprint，需填寫原因
@@ -265,6 +266,13 @@ vulnscan diff --current scan_20261023_120000_abcd
 vulnscan diff --current scan_20261023_120000_abcd `
   --previous scan_20261020_090000_efgh --json
 
+# 將掃描設為此目標的 baseline
+vulnscan baseline set --scan scan_20261020_090000_efgh --created-by ci
+
+# 查看或清除 baseline
+vulnscan baseline show --scan scan_20261023_120000_abcd --json
+vulnscan baseline clear --scan scan_20261023_120000_abcd
+
 # 使用此目標已儲存的 baseline
 vulnscan diff --current scan_20261023_120000_abcd --baseline
 
@@ -297,6 +305,12 @@ vulnscan unsuppress --finding 42
 - 以 `scripts/ci_gate_fixture.py` 建立決定性的 baseline 資料，驗證：
   - `--fail-on new_confirmed` 遇到已確認新增時 exit 1
   - 待確認新增不會讓 `new_confirmed` gate 失敗
+- 以 `scripts/ci_scan_gate_fixture.py` 執行真正的掃描流程：
+  - 啟動本機 fixture server
+  - 實際執行 passive／safe 掃描
+  - 用 CLI 設定 baseline
+  - 驗證 `new`／`new_confirmed` gate
+  - 上傳 HTML／JSON 報告 artifact
 - 可選 Playwright GUI E2E（`VULNSCAN_E2E=1`）
 
 ## API 掃描與 OpenAPI 匯入
@@ -333,8 +347,9 @@ UI 的「API 掃描（OpenAPI 匯入）」可上傳 OpenAPI 3.1／3.0 或 Swagge
 - Diff 會區分新增／已確認／待確認／已排除；誤報與接受風險不會列入新增 regression
 - 跨掃描歷史頁可追蹤 fingerprint 的首次出現、最近出現、掃描來源與狀態變化
 - 接受風險到期、嚴重度升級或誤報證據改變時會自動重開，並保留 `system` 紀錄
-- Diff 可使用目標 baseline；CLI 支援 `--fail-on` 作為 CI regression gate
+- Diff 可使用目標 baseline；CLI 支援 `baseline set／show／clear` 與 `--fail-on` regression gate
 - 「掃描趨勢」頁顯示每個目標最近掃描的新增／修復／未測／已排除與驗證狀態
+- CI 另外執行真正的 scan → baseline → diff gate 流程，而不只依賴 seeded DB
 - 從舊版升級時，既有 `finding_reviews` 會一次性回填為跨掃描狀態，原始資料表保留
 - 資料庫使用 `PRAGMA user_version` 執行增量 migration；不重建既有 `data/`
 - CI 會執行 ruff、pytest coverage（門檻 75%）、JavaScript syntax check、wheel build／安裝 smoke test 與 baseline gate 範例；GUI E2E 可用 `VULNSCAN_E2E=1` 執行

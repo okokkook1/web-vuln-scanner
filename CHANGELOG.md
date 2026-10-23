@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.24.0
+
+- Added CLI commands for target baselines: `baseline set`, `show`, and `clear`.
+- Added a real scan end-to-end CI fixture: passive scan, safe scan, baseline, and diff gates.
+- CI uploads the real scan HTML/JSON reports as an artifact.
+- Hardened CI actions and permissions.
+
 ## 0.23.1
 
 - CI now enforces a 75% pytest coverage threshold.

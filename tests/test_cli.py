@@ -141,6 +141,64 @@ def test_cli_openapi_url_requires_one_source_and_excludes_file(tmp_path: Path):
     assert "--api-post-all" in no_allow_ack.output
 
 
+def test_cli_baseline_set_show_clear(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    db = Database(data_dir / "vulnscan.db")
+    db.init()
+    now = datetime.now(UTC)
+    db.create_scan(_scan("scan_baseline_cli_old", now - timedelta(days=1)))
+    db.create_scan(_scan("scan_baseline_cli_new", now))
+    runner = CliRunner()
+
+    set_result = runner.invoke(
+        app,
+        [
+            "baseline",
+            "set",
+            "--scan",
+            "scan_baseline_cli_old",
+            "--created-by",
+            "pytest",
+            "--data-dir",
+            str(data_dir),
+        ],
+    )
+    assert set_result.exit_code == 0, set_result.output
+    assert "已設定 baseline" in set_result.output
+
+    show_result = runner.invoke(
+        app,
+        [
+            "baseline",
+            "show",
+            "--scan",
+            "scan_baseline_cli_new",
+            "--json",
+            "--data-dir",
+            str(data_dir),
+        ],
+    )
+    assert show_result.exit_code == 0, show_result.output
+    payload = json.loads(show_result.output)
+    assert payload["baseline"] == "scan_baseline_cli_old"
+    assert payload["is_self"] is False
+
+    clear_result = runner.invoke(
+        app,
+        [
+            "baseline",
+            "clear",
+            "--scan",
+            "scan_baseline_cli_new",
+            "--data-dir",
+            str(data_dir),
+        ],
+    )
+    assert clear_result.exit_code == 0, clear_result.output
+    assert "已清除 baseline" in clear_result.output
+    assert db.get_baseline_for_scan(db.get_scan("scan_baseline_cli_new")) is None
+
+
 def test_cli_diff_gate_and_stored_baseline(tmp_path: Path):
     data_dir = tmp_path / "data"
     db = Database(data_dir / "vulnscan.db")
