@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-primary" href="/scans/new">＋ 新增掃描</a>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="eyebrow">Authorized Security Assessment</div>
+  <h2>先確認授權，再開始掃描</h2>
+  <p>針對 staging、production 或內網系統執行非破壞性檢查。掃描器不會執行漏洞利用、密碼爆破或阻斷服務。</p>
+  <div class="hero-actions">
+    <a class="btn btn-primary" href="/scans/new">開始一次掃描</a>
+    <a class="btn btn-ghost" href="/settings">檢查預設設定</a>
+  </div>
+</section>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">累計掃描</div>
+    <div class="stat-value">{{ data.total_scans }}</div>
+  </div>
+  <div class="stat-card success">
+    <div class="stat-label">掃描中</div>
+    <div class="stat-value">{{ data.running }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">累計發現</div>
+    <div class="stat-value">{{ data.total_findings }}</div>
+  </div>
+  <div class="stat-card high">
+    <div class="stat-label">高風險以上</div>
+    <div class="stat-value">{{ data.severity.critical + data.severity.high }}</div>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-top:12px">
+  {% for key, label in review_labels.items() %}
+  <div class="stat-card">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value">{{ data.review_status.get(key, 0) }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>嚴重度分佈</h2>
+        <p>所有掃描累計的發現數量</p>
+      </div>
+      <span class="badge category">{{ severity_total }} 個有效發現</span>
+      {% if data.suppressed_findings %}<span class="badge info">已抑制 {{ data.suppressed_findings }}</span>{% endif %}
+    </div>
+    {% if severity_total %}
+    <div class="sev-list">
+      {% for key in severity_order %}
+      {% set count = data.severity[key] %}
+      {% set pct = (count / severity_total * 100) if severity_total else 0 %}
+      <div class="sev-row">
+        <span><span class="badge {{ key }}">{{ key | severity_label }}</span></span>
+        <div class="sev-track"><div class="sev-fill {{ key }}" style="width: {{ '%.1f' | format(pct) }}%"></div></div>
+        <span class="sev-count">{{ count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="icon">◎</div>
+      <h3>還沒有掃描結果</h3>
+      <p>建立第一次掃描後，這裡會顯示弱點嚴重度分佈。</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>最近掃描</h2>
+        <p>點擊列可查看進度與結果</p>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/scans">全部</a>
+    </div>
+    {% if recent %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>目標</th><th>狀態</th><th>發現</th><th>時間</th></tr></thead>
+        <tbody>
+        {% for row in recent %}
+          <tr>
+            <td>
+              <a href="/scans/{{ row.scan.id }}"><strong>{{ row.targets[0] if row.targets else row.scan.id }}</strong></a>
+              {% if row.targets | length > 1 %}<div class="muted small">＋{{ row.targets | length - 1 }} 個目標</div>{% endif %}
+            </td>
+            <td><span class="badge status-{{ row.scan.status }}">{{ row.scan.status | status_label }}</span></td>
+            <td class="nums">{{ row.findings }}</td>
+            <td class="muted nowrap">{{ row.scan.created_at | dt }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="icon">⌁</div>
+      <h3>尚未建立掃描</h3>
+      <p>從「新增掃描」開始，依照三步驟設定目標與授權。</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

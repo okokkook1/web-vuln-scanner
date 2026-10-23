@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-primary" href="/scans/new">＋ 新增掃描</a>
+{% endblock %}
+
+{% block content %}
+<section class="card flush">
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>目標</th>
+          <th>模式</th>
+          <th>狀態</th>
+          <th>發現</th>
+          <th>開始</th>
+          <th>耗時</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>
+            <a href="/scans/{{ row.scan.id }}"><strong>{{ row.targets[0] if row.targets else row.scan.id }}</strong></a>
+            {% if row.targets | length > 1 %}<div class="muted small">＋{{ row.targets | length - 1 }} 個目標</div>{% endif %}
+            <div class="muted small mono">{{ row.scan.id }}</div>
+          </td>
+          <td><span class="badge category">{{ row.scan.profile | profile_label }}</span></td>
+          <td><span class="badge status-{{ row.scan.status }}">{{ row.scan.status | status_label }}</span></td>
+          <td class="nums">{{ row.findings }}</td>
+          <td class="muted nowrap">{{ row.scan.created_at | dt }}</td>
+          <td class="muted nowrap">{{ row.scan | duration }}</td>
+          <td class="nowrap" style="text-align:right">
+            <a class="btn btn-ghost btn-sm" href="/scans/{{ row.scan.id }}">進度</a>
+            <a class="btn btn-ghost btn-sm" href="/scans/{{ row.scan.id }}/findings">弱點</a>
+            <a class="btn btn-ghost btn-sm" href="/scans/{{ row.scan.id }}/diff">比較</a>
+            {% if row.scan.status in ['completed', 'cancelled'] %}
+            <a class="btn btn-ghost btn-sm" href="/scans/{{ row.scan.id }}/export/html">HTML</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <div class="icon">⌁</div>
+    <h3>還沒有掃描紀錄</h3>
+    <p>建立第一次掃描後，歷史紀錄會保存在本機 SQLite。</p>
+    <div style="margin-top:14px"><a class="btn btn-primary" href="/scans/new">新增掃描</a></div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

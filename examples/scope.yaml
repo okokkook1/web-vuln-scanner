@@ -1,0 +1,21 @@
+engagement: "ACME staging 弱點掃描"
+authorized_by: "ACME 資安主管 <security@acme.example>"
+contact: "devops@acme.example"
+expires: "2026-12-31"
+
+targets:
+  - https://staging.acme.example
+  - https://api-staging.acme.example
+
+exclude:
+  - "https://staging.acme.example/logout"
+  - "https://staging.acme.example/delete/*"
+
+allow_private: false
+profile: safe
+
+limits:
+  rps_per_host: 3
+  max_requests_per_host: 2000
+  max_depth: 3
+  timeout: 10

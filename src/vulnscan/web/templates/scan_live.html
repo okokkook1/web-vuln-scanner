@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% set order = ['validate', 'crawl', 'passive', 'active', 'report'] %}
+{% set current = order.index(phase_key) if phase_key in order else -1 %}
+{% set sev = stats.get('by_severity', {}) %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/findings">弱點清單</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/diff">與前次比較</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/export/html">匯出 HTML</a>
+{% endblock %}
+
+{% block content %}
+<div data-live-scan data-scan-id="{{ scan.id }}" data-status-url="/api/scans/{{ scan.id }}/status">
+  <section class="card">
+    <div class="finding-head">
+      <div>
+        <div class="scan-meta">
+          <span id="live-status-badge" class="badge status-{{ scan.status }}">{{ scan.status | status_label }}</span>
+          <span class="mono">{{ scan.id }}</span>
+          <span>·</span>
+          <span>{{ scan.profile | profile_label }}</span>
+        </div>
+        <h2 class="scan-title" style="margin-top:8px">{{ targets[0] if targets else scan.id }}</h2>
+        {% if targets | length > 1 %}<div class="muted small">＋{{ targets | length - 1 }} 個目標</div>{% endif %}
+      </div>
+      <div class="live-actions">
+        <form id="cancel-form" method="post" action="/scans/{{ scan.id }}/cancel"
+          data-confirm="確定要取消這次掃描嗎？已完成的結果會保留。" {% if terminal %}hidden{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+          <button class="btn btn-danger btn-sm" type="submit">取消掃描</button>
+        </form>
+      </div>
+    </div>
+
+    <div style="margin-top:22px">
+      <div class="row" style="justify-content:space-between;margin-bottom:7px">
+        <span class="muted small" id="live-phase">{{ scan.phase }}</span>
+        <span class="muted small nums" id="live-progress-value">{{ scan.progress }}%</span>
+      </div>
+      <div class="progress"><span id="live-progress-bar" style="width: {{ scan.progress }}%"></span></div>
+      <div class="phase-list">
+        {% for key, label in [('validate','驗證範圍'), ('crawl','探索頁面'), ('passive','被動檢查'), ('active','主動檢查'), ('report','彙整結果')] %}
+          {% set idx = loop.index0 %}
+          <span class="phase {{ 'active' if idx == current else ('done' if current >= 0 and idx < current else '') }}"
+            data-phase="{{ key }}">{{ label }}</span>
+        {% endfor %}
+      </div>
+      <div class="muted small" id="live-message" style="margin-top:10px">{{ scan.message }}</div>
+      <div class="alert alert-error" id="live-error" hidden></div>
+    </div>
+  </section>
+
+  <div class="stat-grid six">
+    <div class="stat-card">
+      <div class="stat-label">請求數</div>
+      <div class="stat-value" id="stat-requests">{{ stats.get('requests', 0) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">頁面</div>
+      <div class="stat-value" id="stat-pages">{{ stats.get('pages', 0) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">端點</div>
+      <div class="stat-value" id="stat-endpoints">{{ stats.get('endpoints', 0) }}</div>
+    </div>
+    <div class="stat-card high">
+      <div class="stat-label">發現</div>
+      <div class="stat-value" id="stat-findings">{{ findings_count }}</div>
+    </div>
+    <div class="stat-card critical">
+      <div class="stat-label">嚴重 / 高</div>
+      <div class="stat-value"><span id="stat-critical">{{ sev.get('critical', 0) }}</span> / <span id="stat-high">{{ sev.get('high', 0) }}</span></div>
+    </div>
+    <div class="stat-card medium">
+      <div class="stat-label">中 / 低</div>
+      <div class="stat-value"><span id="stat-medium">{{ sev.get('medium', 0) }}</span> / <span id="stat-low">{{ sev.get('low', 0) }}</span></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>即時發現</h2>
+          <p>滑動更新，最多顯示最近 8 筆</p>
+        </div>
+        <a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/findings">查看全部</a>
+      </div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>信心</th></tr></thead>
+          <tbody id="live-findings-body">
+            <tr><td colspan="4" class="muted">目前還沒有發現，掃描仍在進行中。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>掃描日誌</h2>
+          <p>最後 80 行 · 即時更新</p>
+        </div>
+        <span class="badge category">audit</span>
+      </div>
+      <div class="log" id="scan-log">
+        <div class="log-empty">等待掃描開始…</div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" id="terminal-actions" {% if not terminal %}hidden{% endif %}>
+    <div class="card-head" style="margin-bottom:10px">
+      <div>
+        <h2>掃描結果</h2>
+        <p>可匯出單檔 HTML 或 JSON；報告已遮罩敏感欄位。</p>
+      </div>
+    </div>
+    <div class="row">
+      <a class="btn btn-primary" id="terminal-findings-link" href="/scans/{{ scan.id }}/findings">查看弱點（{{ findings_count }}）</a>
+      <a class="btn btn-ghost" href="/scans/{{ scan.id }}/export/html">匯出 HTML</a>
+      <a class="btn btn-ghost" href="/scans/{{ scan.id }}/export/json">匯出 JSON</a>
+      <a class="btn btn-ghost" href="/scans/new">新增掃描</a>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>授權與範圍</h2>
+        <p>掃描啟動時保存的快照</p>
+      </div>
+    </div>
+    <dl class="detail-grid">
+      <dt>目標</dt><dd class="mono">{{ targets | join('、') }}</dd>
+      <dt>掃描模式</dt><dd>{{ scan.profile | profile_label }}</dd>
+      <dt>進階檢查</dt><dd>{{ (scope.get('advanced_checks') or []) | map('advanced_label') | join('、') or '—' }}</dd>
+      <dt>登入方式</dt><dd>{{ (scope.get('auth') or {}).get('type', 'none') | auth_label }}{% if (scope.get('auth') or {}).get('login_url') %} · {{ (scope.get('auth') or {}).get('login_url') }}{% endif %}</dd>
+      <dt>API 匯入</dt><dd>{{ (scope.get('api') or {}).get('name') or (scope.get('api') or {}).get('url') or ('已匯入' if (scope.get('api') or {}).get('openapi') else '無') }}{% if (scope.get('api') or {}).get('allow_post') %} · POST 主動測試已啟用{% endif %}{% if (scope.get('api') or {}).get('post_allowlist') %} · POST 白名單 {{ (scope.get('api') or {}).get('post_allowlist') | length }} 條{% elif (scope.get('api') or {}).get('post_allow_all') %} · 全部 POST 已確認{% endif %}</dd>
+      <dt>開始時間</dt><dd>{{ scan.started_at | dt }}</dd>
+      <dt>結束時間</dt><dd>{{ scan.finished_at | dt }}</dd>
+      <dt>耗時</dt><dd>{{ scan | duration }}</dd>
+    </dl>
+  </section>
+</div>
+{% endblock %}

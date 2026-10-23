@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}">掃描進度</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/diff">與前次比較</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/export/html">匯出 HTML</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/export/json">匯出 JSON</a>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>{{ scan.id }}</h2>
+      <p>{{ targets | join('、') }} · {{ scan.profile | profile_label }} · {{ scan.status | status_label }}</p>
+    </div>
+    <div class="row">
+      {% for key in severity_order %}
+      <span class="badge {{ key }}">{{ key | severity_label }} {{ counts[key] }}</span>
+      {% endfor %}
+      {% if suppressed_count %}<span class="badge info">已抑制 {{ suppressed_count }}</span>{% endif %}
+    </div>
+  </div>
+
+  <form method="get" class="filters">
+    <label class="field">
+      <span class="field-label">嚴重度</span>
+      <select class="select" name="severity">
+        <option value="">全部</option>
+        {% for key in severity_order %}
+        <option value="{{ key }}" {{ 'selected' if filters.severity == key else '' }}>{{ key | severity_label }}（{{ counts[key] }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">信心度</span>
+      <select class="select" name="confidence">
+        <option value="">全部</option>
+        {% for key, label in [('high','高'), ('medium','中'), ('low','低')] %}
+        <option value="{{ key }}" {{ 'selected' if filters.confidence == key else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">類別</span>
+      <select class="select" name="category">
+        <option value="">全部</option>
+        {% for category, count in categories %}
+        <option value="{{ category }}" {{ 'selected' if filters.category == category else '' }}>{{ category }}（{{ count }}）</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">驗證狀態</span>
+      <select class="select" name="review_status">
+        <option value="">全部</option>
+        {% for value, label in review_labels.items() %}
+        <option value="{{ value }}" {{ 'selected' if filters.review_status == value else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field search">
+      <span class="field-label">搜尋</span>
+      <input class="input" type="search" name="q" value="{{ filters.q }}" placeholder="標題、URL、參數、rule id">
+    </label>
+    <div class="row actions">
+      <label class="check" style="padding:8px 10px;font-size:12px">
+        <input type="checkbox" name="show_suppressed" value="1" {{ 'checked' if filters.show_suppressed else '' }}>
+        顯示已抑制（{{ suppressed_count }}）
+      </label>
+      <button class="btn btn-primary" type="submit">套用</button>
+      <a class="btn btn-ghost" href="/scans/{{ scan.id }}/findings">清除</a>
+    </div>
+  </form>
+</section>
+
+<section class="card flush">
+  {% if findings %}
+  <form method="post" action="/findings/review-bulk">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+    <input type="hidden" name="scan_id" value="{{ scan.id }}">
+    <div class="row" style="padding:16px 20px;gap:10px;flex-wrap:wrap">
+      <select class="select" name="status" aria-label="批次驗證狀態" style="max-width:180px">
+        {% for value, label in review_labels.items() %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input class="input" type="text" name="note" placeholder="批次備註（誤報／接受風險必填）" style="max-width:340px">
+      <input class="input" type="date" name="expires_at" aria-label="接受風險到期日" style="max-width:170px">
+      <input class="input" type="text" name="updated_by" value="local" aria-label="更新者" style="max-width:140px">
+      <button class="btn btn-primary" type="submit">套用至勾選項目</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr><th></th><th>嚴重度</th><th>弱點</th><th>位置</th><th>參數</th><th>信心</th><th>驗證</th><th>類別</th></tr>
+        </thead>
+        <tbody>
+          {% for finding in findings %}
+          <tr class="{{ 'suppressed-row' if finding.suppressed else '' }}">
+            <td><input type="checkbox" name="finding_ids" value="{{ finding.id }}" aria-label="選取 {{ finding.title }}"></td>
+            <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+            <td>
+              <a href="/findings/{{ finding.id }}"><strong>{{ finding.title }}</strong></a>
+              {% if finding.suppressed %}<span class="badge info">已抑制</span>{% if finding.suppression_reason %}<div class="muted small">原因：{{ finding.suppression_reason }}</div>{% endif %}{% endif %}
+              <div class="muted small mono">
+                {{ finding.rule_id }} ·
+                <a href="/fingerprints?fingerprint={{ finding.fingerprint | urlencode }}">跨掃描歷史</a>
+              </div>
+            </td>
+            <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+            <td class="mono">{{ finding.parameter or '—' }}</td>
+            <td>{{ finding.confidence | confidence_label }}</td>
+            <td><span class="badge category">{{ finding.review_status | review_label }}</span></td>
+            <td><span class="badge category">{{ finding.category or '其他' }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+  {% else %}
+  <div class="empty">
+    <div class="icon">◎</div>
+    <h3>沒有符合條件的發現</h3>
+    <p>{% if suppressed_count and not filters.show_suppressed %}目前有 {{ suppressed_count }} 個已抑制發現，勾選上方「顯示已抑制」即可查看。{% elif filters.severity or filters.confidence or filters.category or filters.review_status or filters.q %}試著清除篩選條件。{% else %}這次掃描沒有偵測到弱點，或掃描仍在進行中。{% endif %}</p>
+    <div style="margin-top:14px"><a class="btn btn-ghost" href="/scans/{{ scan.id }}/findings">清除篩選</a></div>
+  </div>
+  {% endif %}
+</section>
+
+<div class="muted small">
+  顯示 {{ findings | length }} 筆；有效 {{ total }} 筆，已抑制 {{ suppressed_count }} 筆。結果為自動化偵測，請人工複核。
+</div>
+{% endblock %}

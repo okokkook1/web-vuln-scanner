@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · VulnScan</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">V</div>
+      <div>
+        <div class="brand-name">VulnScan</div>
+        <div class="brand-sub">AUTHORIZED WEB SECURITY</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">
+        <span class="nav-icon">▦</span><span>儀表板</span>
+      </a>
+      <a href="/scans/new" class="{{ 'active' if active == 'new' else '' }}">
+        <span class="nav-icon">＋</span><span>新增掃描</span>
+      </a>
+      <a href="/scans" class="{{ 'active' if active == 'history' else '' }}">
+        <span class="nav-icon">≡</span><span>掃描歷史</span>
+      </a>
+      <a href="/trends" class="{{ 'active' if active == 'trends' else '' }}">
+        <span class="nav-icon">↗</span><span>掃描趨勢</span>
+      </a>
+      <a href="/suppressions" class="{{ 'active' if active == 'suppressions' else '' }}">
+        <span class="nav-icon">⊘</span><span>抑制規則</span>
+      </a>
+      <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">
+        <span class="nav-icon">⚙</span><span>設定</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="ver">v{{ app_version }} · local</div>
+      <div class="notice">僅限已取得書面授權的目標</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h1>{{ page_title }}</h1>
+        {% if page_subtitle %}<div class="sub">{{ page_subtitle }}</div>{% endif %}
+      </div>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </header>
+
+    <main class="content">
+      {% if msg %}
+        {% set alert_kind = kind if kind in ['success', 'info', 'error', 'warn'] else 'info' %}
+        <div class="alert alert-{{ alert_kind }}">{{ msg }}</div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<script src="/static/js/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

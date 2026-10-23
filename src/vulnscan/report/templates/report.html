@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VulnScan 報告 — {{ scan.id }}</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e4e8f0;
+      --bg: #f6f8fc;
+      --card: #ffffff;
+      --accent: #2356d8;
+      --critical: #8f1d2c;
+      --high: #c2410c;
+      --medium: #b45309;
+      --low: #1d4ed8;
+      --info: #475467;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.65 "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; }
+    header.hero {
+      background: linear-gradient(135deg, #0f1f46 0%, #1e3a8a 60%, #2356d8 100%);
+      color: #fff;
+      border-radius: 18px;
+      padding: 30px 34px;
+      margin-bottom: 22px;
+    }
+    .eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: 11px; opacity: .7; }
+    h1 { font-size: 27px; margin: 6px 0 8px; letter-spacing: -.02em; }
+    .hero p { margin: 0; color: #c7d7ff; }
+    .hero .meta { margin-top: 14px; font-size: 12px; color: #dbe6ff; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    h2 { font-size: 17px; margin: 0 0 14px; letter-spacing: -.01em; }
+    h3 { font-size: 15px; margin: 0 0 8px; }
+    .grid { display: grid; gap: 12px; }
+    .summary { grid-template-columns: repeat(6, 1fr); }
+    .stat { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: #fbfcff; }
+    .stat .num { font-size: 25px; font-weight: 700; line-height: 1.15; }
+    .stat .label { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .stat.critical .num { color: var(--critical); }
+    .stat.high .num { color: var(--high); }
+    .stat.medium .num { color: var(--medium); }
+    .stat.low .num { color: var(--low); }
+    .stat.info .num { color: var(--info); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; background: #fafbff; }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+    }
+    .badge.critical { background: var(--critical); }
+    .badge.high { background: var(--high); }
+    .badge.medium { background: var(--medium); }
+    .badge.low { background: var(--low); }
+    .badge.info { background: var(--info); }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; word-break: break-all; }
+    .finding { border: 1px solid var(--line); border-radius: 14px; margin: 16px 0; overflow: hidden; break-inside: avoid; }
+    .finding-head { padding: 16px 20px; background: #fbfcff; border-bottom: 1px solid var(--line); }
+    .finding-head h3 { margin: 6px 0 4px; font-size: 16px; }
+    .finding-body { padding: 18px 20px; }
+    .finding-body p { margin: 0 0 12px; }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 14px; font-size: 13px; margin-bottom: 14px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; word-break: break-all; }
+    pre {
+      background: #0f172a;
+      color: #dbe6ff;
+      border-radius: 10px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .refs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .chip { background: #eef2ff; color: #1e3a8a; border-radius: 999px; padding: 2px 9px; font-size: 11px; }
+    .empty { text-align: center; padding: 38px 10px; color: var(--muted); }
+    footer { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 26px; }
+    @media (max-width: 760px) {
+      .summary { grid-template-columns: repeat(3, 1fr); }
+      .wrap { padding: 18px 14px 40px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .wrap { max-width: none; padding: 0; }
+      .card, .finding { box-shadow: none; }
+      .finding { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">Authorized Security Assessment</div>
+    <h1>網站弱點掃描報告</h1>
+    <p>{{ targets | length }} 個目標 · {{ scan.profile | profile_label }} 模式</p>
+    <div class="meta">
+      Scan ID：<span class="mono">{{ scan.id }}</span> ·
+      狀態：{{ scan.status | status_label }} ·
+      產生時間：{{ generated_at.strftime("%Y-%m-%d %H:%M") }}
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>摘要</h2>
+    <div class="grid summary">
+      <div class="stat"><div class="num">{{ total }}</div><div class="label">有效發現</div></div>
+      {% for key in ["critical", "high", "medium", "low", "info"] %}
+      <div class="stat {{ key }}"><div class="num">{{ counts[key] }}</div><div class="label">{{ key | severity_label }}</div></div>
+      {% endfor %}
+    </div>
+    {% if suppressed_count %}<p class="muted" style="margin:12px 0 0">另有 {{ suppressed_count }} 個已抑制發現，未列入總數與差異。</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>掃描資訊</h2>
+    <table>
+      <tr><th style="width:150px">目標</th><td class="mono">{{ targets | join('、') }}</td></tr>
+      <tr><th>授權人</th><td>{{ scope.authorized_by or "—" }}</td></tr>
+      <tr><th>聯絡人</th><td>{{ scope.contact or "—" }}</td></tr>
+      <tr><th>授權到期</th><td>{{ scope.expires or "—" }}</td></tr>
+      <tr><th>掃描模式</th><td>{{ scan.profile | profile_label }}</td></tr>
+      <tr><th>進階檢查</th><td>{{ (scope.get('advanced_checks') or []) | map('advanced_label') | join('、') or '—' }}</td></tr>
+      <tr><th>登入方式</th><td>{{ (scope.get('auth') or {}).get('type', 'none') | auth_label }}{% if (scope.get('auth') or {}).get('login_url') %} · {{ (scope.get('auth') or {}).get('login_url') }}{% endif %}</td></tr>
+      <tr><th>API 匯入</th><td>{{ (scope.get('api') or {}).get('name') or (scope.get('api') or {}).get('url') or ('已匯入' if (scope.get('api') or {}).get('openapi') else '無') }}{% if (scope.get('api') or {}).get('allow_post') %} · POST 主動測試已啟用{% endif %}{% if (scope.get('api') or {}).get('post_allowlist') %} · POST 白名單 {{ (scope.get('api') or {}).get('post_allowlist') | length }} 條{% elif (scope.get('api') or {}).get('post_allow_all') %} · 全部 POST 已確認{% endif %}</td></tr>
+      <tr><th>開始 / 結束</th><td>{{ scan.started_at | dt }} / {{ scan.finished_at | dt }}</td></tr>
+      <tr><th>耗時</th><td>{{ scan | duration }}</td></tr>
+      <tr><th>請求 / 頁面 / 端點</th><td>{{ stats.requests or 0 }} / {{ stats.pages or 0 }} / {{ stats.endpoints or 0 }}</td></tr>
+      <tr><th>指紋</th><td class="mono">{{ fingerprint | pretty }}</td></tr>
+    </table>
+  </section>
+
+  {% set api = scope.get('api') or {} %}
+  {% set selection = api.get('selection') or {} %}
+  {% if api.get('import_stats') or api.get('import_warnings') or api.get('spec_fingerprint') or selection or api.get('test_results') or api.get('bola') %}
+  <section class="card">
+    <h2>API 掃描範圍</h2>
+    {% if api.get('import_stats') %}
+    {% set import_stats = api.get('import_stats') %}
+    <table>
+      <tr><th style="width:170px">OpenAPI 匯入</th><td>GET {{ import_stats.get('get', 0) }}、POST {{ import_stats.get('post', 0) }}</td></tr>
+      <tr><th>略過</th><td>scope {{ import_stats.get('skipped_scope', 0) }}、其他 method {{ import_stats.get('skipped_methods', 0) }}、無法解析 body {{ import_stats.get('unparsed_bodies', 0) }}</td></tr>
+      {% if import_stats.get('external_documents') or import_stats.get('external_refs') %}
+      <tr><th>外部 $ref</th><td>文件 {{ import_stats.get('external_documents', 0) }}、解析 {{ import_stats.get('resolved_refs', 0) }}、ref {{ import_stats.get('external_refs', 0) }}</td></tr>
+      {% endif %}
+    </table>
+    {% endif %}
+    {% if api.get('spec_fingerprint') %}
+    <table style="margin-top:12px">
+      <tr><th style="width:170px">Spec fingerprint</th><td class="mono">{{ api.get('spec_fingerprint', '')[:16] }}{% if api.get('expected_spec_fingerprint') %} · 預覽 {{ api.get('expected_spec_fingerprint', '')[:16] }}{% endif %}{% if api.get('fingerprint_match') is sameas false %} · <strong>不一致</strong>{% elif api.get('fingerprint_match') is sameas true %} · 一致{% endif %}</td></tr>
+      {% if api.get('auth_session') and api.get('auth_session').get('checked') %}
+      <tr><th>Session 檢查</th><td>{% if api.get('auth_session').get('valid') %}有效{% else %}無效：{{ api.get('auth_session').get('reason') or '—' }}{% endif %}{% if api.get('auth_session').get('recovered') %}（已重新登入）{% endif %}</td></tr>
+      {% endif %}
+    </table>
+    {% endif %}
+    {% if selection %}
+    <table style="margin-top:12px">
+      <tr><th style="width:170px">POST 測試</th><td>{{ selection.get('selected_count', 0) }} 個已選、{{ selection.get('skipped_count', 0) }} 個跳過{% if selection.get('allow_all') %}（全部 POST，已確認）{% endif %}</td></tr>
+      {% if selection.get('skipped_reason') %}
+      <tr><th>略過原因</th><td>{% if selection.get('skipped_reason') == 'spec_drift' %}OpenAPI 規格與預覽時不同{% elif selection.get('skipped_reason') == 'session_invalid' %}登入 session 無效{% else %}{{ selection.get('skipped_reason') }}{% endif %}</td></tr>
+      {% endif %}
+      {% if selection.get('allowlist') %}
+      <tr><th>白名單</th><td class="mono">{{ selection.get('allowlist') | join('、') }}</td></tr>
+      {% endif %}
+      {% if selection.get('manifest_summary') %}
+      {% set manifest = selection.get('manifest_summary') %}
+      <tr><th>Manifest 摘要</th><td>{{ manifest.get('count', 0) }} 個端點、{{ (manifest.get('hosts') or []) | length }} 個 host、{{ manifest.get('field_count', 0) }} 個可替換欄位{% if manifest.get('truncated') %}（端點清單僅列前 100 筆）{% endif %}</td></tr>
+      {% endif %}
+    </table>
+    {% endif %}
+    {% if api.get('import_warnings') %}
+    <h3>OpenAPI 匯入警告</h3>
+    <ul>
+      {% for warning in api.get('import_warnings') %}<li>{{ warning }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if selection.get('selected_endpoints') %}
+    <h3>已選 POST 端點</h3>
+    <table>
+      <thead><tr><th>Method</th><th>位置</th><th>可替換欄位</th></tr></thead>
+      <tbody>
+      {% for endpoint in selection.get('selected_endpoints') %}
+        <tr>
+          <td>{{ endpoint.get('method', 'POST') }}</td>
+          <td class="mono">{{ endpoint.get('url', '') }}</td>
+          <td class="mono">{{ (endpoint.get('fields') or []) | join('、') or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if api.get('test_results') %}
+    {% set tests = api.get('test_results') %}
+    <h3>API 端點測試結果</h3>
+    <p class="muted">
+      已測試 {{ tests.get('tested', 0) }} / {{ tests.get('selected', 0) }} 個端點；
+      測試預算 {{ tests.get('api_tests', 0) }} / {{ tests.get('max_api_tests', 0) }}。
+      {% if tests.get('truncated') %}（清單僅列前 100 筆）{% endif %}
+    </p>
+    <table>
+      <thead><tr><th>Method</th><th>位置</th><th>檢查</th><th>各檢查結果</th><th>發現</th><th>跳過原因</th></tr></thead>
+      <tbody>
+      {% for endpoint in tests.get('endpoints') %}
+        <tr>
+          <td>{{ endpoint.get('method', 'POST') }}</td>
+          <td class="mono">{{ endpoint.get('url', '') }}</td>
+          <td>{{ (endpoint.get('checks') or []) | join('、') or '—' }}</td>
+          <td class="mono">{{ (endpoint.get('outcomes') or {}) | pretty }}</td>
+          <td>{{ endpoint.get('findings', 0) }}</td>
+          <td>
+            {% if endpoint.get('skipped_reason') == 'no_json_body' %}沒有 JSON body
+            {% elif endpoint.get('skipped_reason') == 'budget' %}測試預算用盡
+            {% elif endpoint.get('skipped_reason') %}未執行（{{ endpoint.get('skipped_reason') }}）
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if api.get('bola') %}
+    {% set bola = api.get('bola') %}
+    <h3>BOLA／BFLA 唯讀檢查</h3>
+    <table>
+      <tr><th style="width:170px">狀態</th><td>{% if bola.get('enabled') %}已啟用{% else %}未啟用{% endif %}</td></tr>
+      <tr><th>測試</th><td>{{ bola.get('tested', 0) }} / {{ bola.get('candidates', 0) }} 個候選端點；發現 {{ bola.get('findings', 0) }}</td></tr>
+      <tr><th>第二帳號</th><td>{{ bola.get('secondary_auth', '—') }}</td></tr>
+      {% if bola.get('allowlist') %}
+      <tr><th>GET 白名單</th><td class="mono">{{ bola.get('allowlist') | join('、') }}</td></tr>
+      {% elif bola.get('allow_all') %}
+      <tr><th>GET 範圍</th><td>全部 BOLA 候選 GET（已確認）</td></tr>
+      {% endif %}
+      {% if api.get('bola_auth_session') and api.get('bola_auth_session').get('checked') %}
+      <tr><th>第二帳號 session</th><td>{% if api.get('bola_auth_session').get('valid') %}有效{% else %}無效：{{ api.get('bola_auth_session').get('reason') or '—' }}{% endif %}{% if api.get('bola_auth_session').get('recovered') %}（已重新登入）{% endif %}</td></tr>
+      {% endif %}
+      {% if bola.get('skipped_reason') %}<tr><th>略過原因</th><td>{{ bola.get('skipped_reason') }}</td></tr>{% endif %}
+    </table>
+    {% if bola.get('results') %}
+    <h3>BOLA／BFLA 端點結果</h3>
+    <table>
+      <thead><tr><th>類型</th><th>位置</th><th>Primary / A</th><th>Secondary / B</th><th>未登入</th><th>相似度</th><th>結果</th></tr></thead>
+      <tbody>
+      {% for item in bola.get('results') %}
+        <tr>
+          <td>{% if item.get('kind') == 'bfla' %}BFLA{% else %}BOLA{% endif %}</td>
+          <td class="mono">{{ item.get('url', '') }}</td>
+          <td>{{ item.get('primary_status', '—') }}</td>
+          <td>{{ item.get('secondary_status', '—') }}</td>
+          <td>{{ item.get('unauth_status', '—') }}</td>
+          <td>{{ item.get('similarity', '—') }}</td>
+          <td>
+            {% if item.get('result') == 'vulnerable' %}<span class="badge high">疑似授權缺失</span>
+            {% elif item.get('result') == 'protected' %}已保護
+            {% elif item.get('result') == 'public' %}公開資源
+            {% elif item.get('result') == 'not_found' %}找不到
+            {% elif item.get('result') == 'primary_auth_failed' %}主要帳號失效
+            {% elif item.get('result') == 'budget' %}預算用盡
+            {% else %}需複核（{{ item.get('result') }}）{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>發現（{{ total }}）</h2>
+    {% if findings %}
+    <table>
+      <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>信心</th><th>驗證</th></tr></thead>
+      <tbody>
+      {% for finding in findings %}
+        <tr>
+          <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+          <td>{{ finding.title }}</td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}{% if finding.parameter %} · {{ finding.parameter }}{% endif %}</td>
+          <td>{{ finding.confidence | confidence_label }}</td>
+          <td>
+            {{ finding.review_status | review_label }}
+            {% if finding.review_note %}<div class="muted">{{ finding.review_note }}</div>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="empty">本次掃描沒有發現符合條件的弱點。</div>
+    {% endif %}
+  </section>
+
+  {% if suppressed_findings %}
+  <section class="card">
+    <h2>已抑制（{{ suppressed_count }}）</h2>
+    <table>
+      <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>原因</th></tr></thead>
+      <tbody>
+      {% for finding in suppressed_findings %}
+        <tr>
+          <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+          <td>{{ finding.title }}</td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}{% if finding.parameter %} · {{ finding.parameter }}{% endif %}</td>
+          <td>{{ finding.suppression_reason or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% for finding in findings %}
+  <article class="finding">
+    <div class="finding-head">
+      <span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span>
+      <span class="muted" style="margin-left:8px">信心度 {{ finding.confidence | confidence_label }}</span>
+      <h3>{{ finding.title }}</h3>
+      <div class="mono muted">{{ finding.rule_id }} · {{ finding.category }}</div>
+    </div>
+    <div class="finding-body">
+      <dl class="kv">
+        <dt>位置</dt><dd class="mono">{{ finding.method }} {{ finding.url }}</dd>
+        {% if finding.parameter %}<dt>參數</dt><dd class="mono">{{ finding.parameter }}</dd>{% endif %}
+        {% if finding.fingerprint %}<dt>Fingerprint</dt><dd class="mono small">{{ finding.fingerprint }}</dd>{% endif %}
+      </dl>
+      {% if finding.description %}<p>{{ finding.description }}</p>{% endif %}
+      <h3>證據</h3>
+      <pre>{{ finding.evidence | pretty }}</pre>
+      {% if finding.remediation %}
+      <h3 style="margin-top:16px">修補建議</h3>
+      <p>{{ finding.remediation }}</p>
+      {% endif %}
+      {% if finding.refs %}
+      <div class="refs">
+        {% for key, value in finding.refs.items() %}<span class="chip">{{ key }}: {{ value }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      {% if finding.review_status != 'needs_review' or finding.review_note %}
+      <h3 style="margin-top:16px">人工驗證</h3>
+      <dl class="kv">
+        <dt>狀態</dt><dd>{{ finding.review_status | review_label }}</dd>
+        {% if finding.review_note %}<dt>備註</dt><dd>{{ finding.review_note }}</dd>{% endif %}
+        {% if finding.review_expires_at %}<dt>到期</dt><dd>{{ finding.review_expires_at | dt }}</dd>{% endif %}
+        {% if finding.review_updated_by %}
+        <dt>更新者</dt>
+        <dd>{{ finding.review_updated_by }}{% if finding.review_updated_at %} · {{ finding.review_updated_at }}{% endif %}</dd>
+        {% endif %}
+      </dl>
+      {% if finding.review_history %}
+      <details style="margin-top:8px">
+        <summary>驗證歷程（{{ finding.review_history | length }}）</summary>
+        <table>
+          <thead><tr><th>時間</th><th>狀態</th><th>更新者</th><th>備註</th><th>到期</th></tr></thead>
+          <tbody>
+          {% for event in finding.review_history %}
+            <tr>
+              <td class="mono">{{ event.created_at }}</td>
+              <td>{{ event.status | review_label }}</td>
+              <td>{{ event.updated_by or '—' }}</td>
+              <td>{{ event.note or '—' }}</td>
+              <td>{% if event.expires_at %}{{ event.expires_at | dt }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+
+  <footer>
+    <strong>免責聲明：</strong>本報告僅供已取得書面授權的目標使用。掃描結果為自動化偵測，
+    可能包含誤報或漏報，所有發現都應由人員進一步複核與驗證。掃描器不會執行漏洞利用、
+    資料竊取或阻斷服務。報告中的敏感欄位已盡量遮罩。
+  </footer>
+</div>
+</body>
+</html>

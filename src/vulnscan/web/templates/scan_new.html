@@ -1,0 +1,578 @@
+{% extends "base.html" %}
+{% set f = form_data %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-error"><strong>無法建立掃描：</strong>{{ error }}</div>
+{% endif %}
+
+<section class="card">
+  <div class="wizard-steps">
+    <div class="wizard-step active" data-step-indicator="0"><span class="n">1</span> 目標與授權</div>
+    <div class="wizard-step" data-step-indicator="1"><span class="n">2</span> 掃描設定</div>
+    <div class="wizard-step" data-step-indicator="2"><span class="n">3</span> 確認開始</div>
+  </div>
+
+  <form method="post" action="/scans" id="scan-form" enctype="multipart/form-data"
+    data-wizard data-initial-step="{{ initial_step }}">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+
+    <div id="wizard-error" class="alert alert-error" hidden></div>
+
+    <div class="wizard-panel active" data-step="0">
+      <div class="card-head">
+        <div>
+          <h2>目標與授權</h2>
+          <p>只掃描你擁有、或已取得書面授權的系統。</p>
+        </div>
+        <span class="badge category">Step 1 / 3</span>
+      </div>
+
+      <label class="field">
+        <span class="field-label">目標網址 <span class="required">*</span></span>
+        <textarea class="textarea" name="targets" rows="5" required
+          placeholder="https://staging.example.com&#10;https://api-staging.example.com&#10;192.168.10.0/24">{{ f.targets }}</textarea>
+        <div class="hint">每行一個 URL、網域或 IPv4 網段（最多 100 個位址）。未寫 scheme 時預設 https。</div>
+      </label>
+
+      <label class="field">
+        <span class="field-label">排除路徑 <span class="opt">選填</span></span>
+        <textarea class="textarea" name="exclude" rows="2"
+          placeholder="https://staging.example.com/logout&#10;/delete/*">{{ f.exclude }}</textarea>
+        <div class="hint">支援 glob；預設也會略過 logout、delete、remove 等危險路徑。</div>
+      </label>
+
+      <label class="check warn" style="margin-bottom:16px">
+        <input type="checkbox" name="allow_private" {{ 'checked' if f.allow_private else '' }}>
+        <span>
+          <strong>允許掃描私有 IP／內網目標</strong><br>
+          <span class="muted small">只有在授權涵蓋內網網段時才開啟。內網掃描請先向維運或資安團隊報備。</span>
+        </span>
+      </label>
+
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">授權人 <span class="required">*</span></span>
+          <input class="input" type="text" name="authorized_by" required
+            placeholder="例如：ACME 資安主管" value="{{ f.authorized_by }}">
+        </label>
+        <label class="field">
+          <span class="field-label">聯絡人 <span class="required">*</span></span>
+          <input class="input" type="text" name="contact" required
+            placeholder="例如：security@acme.example" value="{{ f.contact }}">
+        </label>
+      </div>
+
+      <label class="field" style="max-width:320px">
+        <span class="field-label">授權到期日 <span class="required">*</span></span>
+        <input class="input" type="date" name="expires" required value="{{ f.expires }}">
+        <div class="hint">到期後掃描器會拒絕執行，需更新授權。</div>
+      </label>
+
+      <label class="check danger">
+        <input type="checkbox" name="authorized_ack" required>
+        <span>
+          <strong>我確認已取得此目標的書面授權</strong><br>
+          <span class="muted small">我了解掃描會對目標發出 HTTP 請求，且結果需由人工複核。</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="wizard-panel" data-step="1">
+      <div class="card-head">
+        <div>
+          <h2>掃描設定</h2>
+          <p>預設值以安全、低流量為優先。</p>
+        </div>
+        <span class="badge category">Step 2 / 3</span>
+      </div>
+
+      <div class="field">
+        <span class="field-label">掃描模式</span>
+        <div class="profile-grid">
+          <label class="profile-card">
+            <input type="radio" name="profile" value="passive" data-label="被動盤點"
+              {{ 'checked' if f.profile == 'passive' else '' }}>
+            <div class="p-title"><span>被動盤點</span><span class="p-tag">最安全</span></div>
+            <div class="p-desc">只觀察標頭、Cookie、TLS、公開檔案；不送任何探測字串。</div>
+          </label>
+          <label class="profile-card">
+            <input type="radio" name="profile" value="safe" data-label="安全主動"
+              {{ 'checked' if f.profile not in ['passive', 'full'] else '' }}>
+            <div class="p-title"><span>安全主動</span><span class="p-tag">預設</span></div>
+            <div class="p-desc">加入無害 canary，檢測開放重導、反射注入與錯誤型 SQLi。</div>
+          </label>
+          <label class="profile-card">
+            <input type="radio" name="profile" value="full" data-label="完整（進階）"
+              {{ 'checked' if f.profile == 'full' else '' }}>
+            <div class="p-title"><span>完整</span><span class="p-tag">進階</span></div>
+            <div class="p-desc">安全主動 + 布林 SQLi、路徑遍歷、SSRF；需要逐項確認。</div>
+          </label>
+        </div>
+      </div>
+
+      <div id="full-options" class="full-options" {% if f.profile != 'full' %}hidden{% endif %}>
+        <div class="alert alert-warn">
+          <strong>完整模式會送出進階探測請求：</strong>
+          成對的唯讀 SQL 條件、路徑遍歷字串，以及唯一的 SSRF callback URL。檢查仍為非破壞性，但只應對已取得書面授權的目標使用。
+        </div>
+        <div class="stack">
+          <label class="check danger">
+            <input type="checkbox" name="advanced_sqli_boolean" data-advanced-check
+              {{ 'checked' if 'sqli_boolean' in f.advanced_checks else '' }}>
+            <span>
+              <strong>布林型 SQL Injection</strong><br>
+              <span class="muted small">送出成對的真／假條件並比對回應；不做 UNION、不寫入、不匯出資料。</span>
+            </span>
+          </label>
+          <label class="check danger">
+            <input type="checkbox" name="advanced_traversal" data-advanced-check
+              {{ 'checked' if 'traversal' in f.advanced_checks else '' }}>
+            <span>
+              <strong>路徑遍歷</strong><br>
+              <span class="muted small">使用不存在的 canary 檔名偵測錯誤訊息；不讀取、不下載伺服器檔案。</span>
+            </span>
+          </label>
+          <label class="check danger">
+            <input type="checkbox" name="advanced_ssrf" id="advanced-ssrf" data-advanced-check
+              {{ 'checked' if 'ssrf' in f.advanced_checks else '' }}>
+            <span>
+              <strong>SSRF（callback 驗證）</strong><br>
+              <span class="muted small">插入唯一 callback URL，確認目標伺服器是否主動連回；不存取 metadata 位址。</span>
+            </span>
+          </label>
+          <div id="ssrf-callback-field" {% if 'ssrf' not in f.advanced_checks %}hidden{% endif %}>
+            <label class="field" style="margin-bottom:0">
+              <span class="field-label">Callback base URL <span class="opt">選填</span></span>
+              <input class="input" type="text" name="ssrf_callback"
+                value="{{ f.ssrf_callback }}" placeholder="http://203.0.113.10:8765">
+              <div class="hint">
+                留空會自動使用 <code>http://127.0.0.1:&lt;隨機埠&gt;</code>。
+                若目標在遠端，請填入目標可連回此機器的 IP／主機名稱與連接埠，並確認防火牆已開放。
+              </div>
+            </label>
+          </div>
+          <label class="check danger">
+            <input type="checkbox" name="advanced_ack">
+            <span>
+              <strong>我確認要啟用上述進階檢查</strong><br>
+              <span class="muted small">至少勾選一項；每次掃描都需要重新確認。</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="auth-box">
+        <div class="card-head" style="margin-bottom:12px">
+          <div>
+            <h2>登入後掃描 <span class="badge category">選填</span></h2>
+            <p>先完成登入，再讓掃描器帶著 session 探索需要登入的頁面。</p>
+          </div>
+        </div>
+
+        <label class="field" style="max-width:320px">
+          <span class="field-label">登入方式</span>
+          <select class="select" name="auth_type" id="auth-type">
+            {% for value, label in [('none','不使用登入'), ('cookie','Cookie'), ('header','自訂 Header'), ('form','表單登入'), ('state','瀏覽器狀態檔（SSO／MFA）'), ('browser','瀏覽器互動登入（SSO／MFA）')] %}
+            <option value="{{ value }}" {{ 'selected' if f.auth_type == value else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div data-auth-panel="cookie" hidden>
+          <label class="field">
+            <span class="field-label">Cookie 字串</span>
+            <input class="input" type="password" name="auth_cookie" autocomplete="off"
+              placeholder="sessionid=...; other=...">
+            <div class="hint">貼上瀏覽器 Cookie header 的內容；只存在掃描記憶體，不會寫入資料庫。</div>
+          </label>
+        </div>
+
+        <div data-auth-panel="header" hidden>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Header 名稱</span>
+              <input class="input" type="text" name="auth_header_name" value="{{ f.auth_header_name }}"
+                placeholder="Authorization">
+            </label>
+            <label class="field">
+              <span class="field-label">Header 值</span>
+              <input class="input" type="password" name="auth_header_value" autocomplete="off"
+                placeholder="Bearer ... 或 API key">
+            </label>
+          </div>
+        </div>
+
+        <div data-auth-panel="form" hidden>
+          <label class="field">
+            <span class="field-label">登入 URL</span>
+            <input class="input" type="text" name="login_url" value="{{ f.login_url }}"
+              placeholder="https://staging.example.com/login">
+          </label>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">帳號</span>
+              <input class="input" type="text" name="username" value="{{ f.username }}" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field-label">密碼</span>
+              <input class="input" type="password" name="password" autocomplete="new-password">
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">帳號欄位名稱</span>
+              <input class="input" type="text" name="login_user_field" value="{{ f.login_user_field }}">
+            </label>
+            <label class="field">
+              <span class="field-label">密碼欄位名稱</span>
+              <input class="input" type="text" name="login_pass_field" value="{{ f.login_pass_field }}">
+            </label>
+          </div>
+          <div class="alert alert-info">
+            表單登入會自動讀取登入頁的 CSRF token，並在成功後把 Cookie 帶入掃描。
+            若網站使用 JavaScript 登入、SSO、MFA 或 localStorage token，請改用下方的瀏覽器狀態檔。
+          </div>
+        </div>
+
+        <div data-auth-panel="state" hidden>
+          <div class="alert alert-info">
+            先用 <code>vulnscan login --url ...</code> 開啟瀏覽器完成 SSO／MFA／JavaScript 登入，
+            再把產生的 storage state JSON 上傳。掃描器會擷取符合 scope 的 Cookie；
+            若有 localStorage token，可選擇映射到自訂 Header。
+          </div>
+          <label class="field">
+            <span class="field-label">Storage State JSON</span>
+            <input class="input" type="file" name="auth_state_file" accept=".json,application/json">
+            <div class="hint">Playwright storage state 格式；檔案只在本次掃描記憶體中解析，不會寫入資料庫。</div>
+          </label>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">localStorage token key <span class="opt">選填</span></span>
+              <input class="input" type="text" name="storage_token_key" value="{{ f.storage_token_key }}"
+                placeholder="access_token">
+            </label>
+            <label class="field">
+              <span class="field-label">對應 Header 名稱 <span class="opt">選填</span></span>
+              <input class="input" type="text" name="storage_header_name" value="{{ f.storage_header_name }}"
+                placeholder="Authorization">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Header 值前綴</span>
+            <input class="input" type="text" name="storage_header_prefix" value="{{ f.storage_header_prefix }}"
+              placeholder="Bearer ">
+            <div class="hint">例如前綴 <code>Bearer </code> 會送出 <code>Authorization: Bearer &lt;token&gt;</code>；留空則直接送 token。</div>
+          </label>
+        </div>
+
+        <div data-auth-panel="browser" hidden>
+          <div class="alert alert-info">
+            按下方按鈕會在這台電腦開啟 Chromium；請完成 SSO／MFA／JavaScript 登入，
+            回到此頁按「我已完成登入」。需要先安裝
+            <code>pip install -e ".[browser]"</code> 與 <code>playwright install chromium</code>。
+          </div>
+          <label class="field">
+            <span class="field-label">登入 URL</span>
+            <input class="input" type="text" name="browser_login_url" value="{{ f.browser_login_url }}"
+              placeholder="https://staging.example.com/login">
+            <div class="hint">可以是應用登入頁或 SSO 入口；瀏覽器會由此開始。</div>
+          </label>
+          <input type="hidden" name="browser_session_id" value="">
+          <div class="row" style="margin-bottom:12px">
+            <button class="btn btn-primary" type="button" id="browser-login-start">開啟瀏覽器登入</button>
+            <button class="btn btn-ghost" type="button" id="browser-login-complete" hidden>我已完成登入</button>
+            <button class="btn btn-danger" type="button" id="browser-login-cancel" hidden>取消</button>
+          </div>
+          <div id="browser-login-status" class="alert alert-info" hidden></div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">localStorage token key <span class="opt">選填</span></span>
+              <input class="input" type="text" name="browser_token_key" value="{{ f.browser_token_key }}"
+                placeholder="access_token">
+            </label>
+            <label class="field">
+              <span class="field-label">對應 Header 名稱 <span class="opt">選填</span></span>
+              <input class="input" type="text" name="browser_header_name" value="{{ f.browser_header_name }}"
+                placeholder="Authorization">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Header 值前綴</span>
+            <input class="input" type="text" name="browser_header_prefix" value="{{ f.browser_header_prefix }}"
+              placeholder="Bearer ">
+            <div class="hint">若應用把 token 放在 localStorage，填 key 與 Header 名稱即可自動帶入。</div>
+          </label>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <label class="field">
+            <span class="field-label">登入後驗證 URL <span class="opt">選填</span></span>
+            <input class="input" type="text" name="auth_verify_url" value="{{ f.auth_verify_url }}"
+              placeholder="https://staging.example.com/dashboard">
+            <div class="hint">
+              API POST 測試前會檢查此 URL；留空則使用第一個目標。
+              建議使用需要登入的頁面，才能準確偵測 session 過期。
+            </div>
+          </label>
+          <label class="field">
+            <span class="field-label">登入成功驗證文字 <span class="opt">選填</span></span>
+            <input class="input" type="text" name="auth_verify_text" value="{{ f.auth_verify_text }}"
+              placeholder="例如：登出、Dashboard、我的帳號">
+            <div class="hint">若設定，驗證頁面必須包含此文字。</div>
+          </label>
+        </div>
+
+        <div class="alert alert-warn" style="margin-bottom:0">
+          <strong>憑證不會保存：</strong>密碼、Cookie、Header 值與 storage state 只存在本次掃描的記憶體中，
+          不寫入 SQLite、報告或 scope 快照；表單驗證失敗後需重新輸入。
+        </div>
+      </div>
+
+      <div class="auth-box">
+        <div class="card-head" style="margin-bottom:12px">
+          <div>
+            <h2>BOLA／BFLA 雙帳號唯讀檢查 <span class="badge category">選填</span></h2>
+            <p>使用主要帳號與第二帳號讀取物件或管理 GET URL；只做 GET，不枚舉、不保存回應內容。</p>
+          </div>
+        </div>
+
+        <label class="check danger">
+          <input type="checkbox" name="enable_bola" {{ 'checked' if f.enable_bola else '' }}>
+          <span>
+            <strong>啟用 BOLA／BFLA 唯讀檢查</strong><br>
+            <span class="muted small">
+              需要主要帳號與第二帳號；只測試具有數字／UUID／ID 參數的 GET 端點。
+              會先確認未登入請求被拒絕，再比較兩個帳號的回應形狀。
+            </span>
+          </span>
+        </label>
+        <label class="check danger">
+          <input type="checkbox" name="bola_ack" {{ 'checked' if f.bola_ack else '' }}>
+          <span>
+            <strong>我確認已取得兩個帳號的授權，且可接受唯讀授權測試</strong>
+          </span>
+        </label>
+
+        <label class="field" style="max-width:360px">
+          <span class="field-label">第二帳號登入方式</span>
+          <select class="select" name="bola_auth_type" id="bola-auth-type">
+            {% for value, label in [('none','未設定'), ('cookie','Cookie'), ('header','自訂 Header'), ('state','Storage state')] %}
+            <option value="{{ value }}" {{ 'selected' if f.bola_auth_type == value else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div data-bola-panel="cookie" hidden>
+          <label class="field">
+            <span class="field-label">第二帳號 Cookie</span>
+            <input class="input" type="password" name="bola_auth_cookie" autocomplete="off"
+              placeholder="sessionid=...">
+          </label>
+        </div>
+        <div data-bola-panel="header" hidden>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Header 名稱</span>
+              <input class="input" type="text" name="bola_auth_header_name"
+                value="{{ f.bola_auth_header_name }}" placeholder="Authorization">
+            </label>
+            <label class="field">
+              <span class="field-label">Header 值</span>
+              <input class="input" type="password" name="bola_auth_header_value" autocomplete="off"
+                placeholder="Bearer ...">
+            </label>
+          </div>
+        </div>
+        <div data-bola-panel="state" hidden>
+          <label class="field">
+            <span class="field-label">第二帳號 Storage State JSON</span>
+            <input class="input" type="file" name="bola_auth_state_file" accept=".json,application/json">
+            <div class="hint">會依 scope 擷取 Cookie；不支援第二帳號表單／瀏覽器互動登入。</div>
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field-label">BOLA GET 白名單 <span class="opt">選填</span></span>
+          <textarea class="textarea" name="bola_allowlist" rows="3"
+            placeholder="GET https://api.example.com/orders/*&#10;GET /api/users/*">{{ f.bola_allowlist }}</textarea>
+          <div class="hint">
+            留空時必須勾選下方確認；建議先限制到授權的物件路徑。
+          </div>
+        </label>
+
+        <label class="check danger">
+          <input type="checkbox" name="bola_allow_all_ack" {{ 'checked' if f.bola_allow_all_ack else '' }}>
+          <span>
+            <strong>BOLA GET 白名單留空時，我確認測試所有候選 GET 端點</strong><br>
+            <span class="muted small">
+              只有在 BOLA GET 白名單為空時生效；未勾選且白名單為空時，掃描器會拒絕啟用 BOLA。
+            </span>
+          </span>
+        </label>
+
+        <div class="form-row">
+          <label class="field">
+            <span class="field-label">API 測試預算</span>
+            <input class="input" type="number" name="max_api_tests" min="1" max="200" value="{{ f.max_api_tests }}">
+            <div class="hint">JSON POST 檢查最多嘗試的參數數，預設 20。</div>
+          </label>
+          <label class="field">
+            <span class="field-label">BOLA 測試預算</span>
+            <input class="input" type="number" name="max_bola_tests" min="1" max="50" value="{{ f.max_bola_tests }}">
+            <div class="hint">最多測試的物件端點數，預設 8。</div>
+          </label>
+        </div>
+      </div>
+
+      <div class="auth-box">
+        <div class="card-head" style="margin-bottom:12px">
+          <div>
+            <h2>API 掃描（OpenAPI 匯入）</h2>
+            <p>上傳 OpenAPI 3 或 Swagger 2 JSON/YAML，或提供規格 URL；掃描器會匯入 GET／POST 端點。</p>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="field-label">OpenAPI 規格檔 <span class="opt">選填</span></span>
+          <input class="input" type="file" name="openapi_file" accept=".json,.yaml,.yml,application/json,application/yaml">
+          <div class="hint">最多 2 MB；與下方 URL 擇一。</div>
+        </label>
+
+        <label class="field">
+          <span class="field-label">或 OpenAPI URL <span class="opt">選填</span></span>
+          <input class="input" type="text" name="openapi_url" value="{{ f.openapi_url }}"
+            placeholder="https://api.example.com/openapi.json">
+          <div class="hint">
+            掃描時由目前登入 session 取得；主機必須在授權 scope 內。
+            預覽會使用目前設定的登入方式；表單登入預覽會實際登入一次。
+          </div>
+        </label>
+        <input type="hidden" name="openapi_fingerprint" value="{{ f.openapi_fingerprint }}">
+
+        <label class="field">
+          <span class="field-label">POST 端點白名單 <span class="opt">選填</span></span>
+          <textarea class="textarea" name="api_post_allowlist" rows="3"
+            placeholder="POST https://api.example.com/api/echo&#10;POST /api/items/*">{{ f.api_post_allowlist }}</textarea>
+          <div class="hint">
+            每行一條；建議使用 host-aware 格式，例如
+            <code>POST https://api.example.com/api/items/*</code>。
+            只限制 POST API 檢查；留空時必須勾選下方的「確認測試所有 POST 端點」。
+          </div>
+        </label>
+
+        <div class="row" style="margin-bottom:12px">
+          <button class="btn btn-ghost" type="button" id="api-preview-button">預覽 POST 端點（不送出掃描請求）</button>
+        </div>
+        <div id="api-preview-result" class="alert alert-info" hidden></div>
+        <div class="row" id="api-preview-actions" style="margin:8px 0 12px" hidden>
+          <button class="btn btn-ghost" type="button" id="api-preview-all">全選</button>
+          <button class="btn btn-ghost" type="button" id="api-preview-none">清除選取</button>
+          <button class="btn btn-primary" type="button" id="api-preview-apply">套用到白名單</button>
+        </div>
+
+        <label class="check danger">
+          <input type="checkbox" name="allow_api_post" {{ 'checked' if f.allow_api_post else '' }}>
+          <span>
+            <strong>允許 POST／JSON 主動測試</strong><br>
+            <span class="muted small">
+              會對 OpenAPI 的 POST 端點送出無害 canary，但部分 API 可能建立或修改資料。
+              僅限已授權的 staging／測試環境，並確認可接受此風險。
+              API 測試前會檢查登入 session；表單登入可設定驗證 URL／文字提高準確度。
+            </span>
+          </span>
+        </label>
+
+        <label class="check danger">
+          <input type="checkbox" name="api_post_all_ack" {{ 'checked' if f.api_post_all_ack else '' }}>
+          <span>
+            <strong>白名單留空時，我確認測試所有 POST 端點</strong><br>
+            <span class="muted small">
+              只有在白名單為空時生效；若已設定白名單，掃描只會測試符合的端點。
+              未勾選且白名單為空時，掃描器會拒絕啟用 API POST 測試。
+            </span>
+          </span>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">每 host 速率（rps）</span>
+          <input class="input" type="number" name="rps_per_host" min="0.2" max="50" step="0.1" value="{{ f.rps_per_host }}">
+          <div class="hint">預設 3 rps，對正式環境建議 1–3。</div>
+        </label>
+        <label class="field">
+          <span class="field-label">每 host 請求上限</span>
+          <input class="input" type="number" name="max_requests_per_host" min="20" max="100000" step="10" value="{{ f.max_requests_per_host }}">
+          <div class="hint">達到上限會停止該 host 的請求。</div>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label class="field">
+          <span class="field-label">最大探索深度</span>
+          <input class="input" type="number" name="max_depth" min="0" max="10" value="{{ f.max_depth }}">
+          <div class="hint">從起始頁往下的連結層數，預設 3。</div>
+        </label>
+        <label class="field">
+          <span class="field-label">請求 timeout（秒）</span>
+          <input class="input" type="number" name="timeout" min="1" max="60" step="1" value="{{ f.timeout }}">
+          <div class="hint">連線或讀取逾時。</div>
+        </label>
+      </div>
+
+      <div class="alert alert-info">
+        內建上限：一次最多 50 個目標、250 個展開後的起始 URL；主動檢查另有測試預算，避免造成負擔。
+      </div>
+    </div>
+
+    <div class="wizard-panel" data-step="2">
+      <div class="card-head">
+        <div>
+          <h2>確認開始</h2>
+          <p>請再次確認授權與掃描範圍。</p>
+        </div>
+        <span class="badge category">Step 3 / 3</span>
+      </div>
+
+      <div class="summary-box">
+        <dl>
+          <dt>目標</dt><dd id="summary-targets">—</dd>
+          <dt>授權人 / 聯絡人</dt><dd id="summary-auth">—</dd>
+          <dt>授權到期</dt><dd id="summary-expires">—</dd>
+          <dt>掃描模式</dt><dd id="summary-profile">—</dd>
+          <dt>進階檢查</dt><dd id="summary-advanced">—</dd>
+          <dt>SSRF callback</dt><dd id="summary-callback">—</dd>
+          <dt>登入方式</dt><dd id="summary-login">—</dd>
+          <dt>BOLA／BFLA</dt><dd id="summary-bola">—</dd>
+          <dt>API 規格</dt><dd id="summary-api">—</dd>
+          <dt>POST 白名單</dt><dd id="summary-api-allow">—</dd>
+          <dt>API POST 測試</dt><dd id="summary-api-post">—</dd>
+          <dt>速率與上限</dt><dd id="summary-limits">—</dd>
+          <dt>私有 IP</dt><dd id="summary-private">—</dd>
+        </dl>
+      </div>
+
+      <div class="alert alert-warn" style="margin-top:16px">
+        <strong>非破壞性掃描：</strong>本工具不會執行漏洞利用、資料竊取或阻斷服務。
+        自動化結果可能包含誤報或漏報，請由人員複核後再進行修補。
+      </div>
+
+      <div class="alert alert-info">
+        開始後會建立 audit log，記錄每一個 HTTP 請求；可在掃描進度頁取消。
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <div class="row">
+        <button class="btn btn-ghost" type="button" data-prev hidden>← 上一步</button>
+      </div>
+      <div class="row">
+        <a class="btn btn-ghost" href="/">取消</a>
+        <button class="btn btn-primary" type="button" data-next>下一步 →</button>
+        <button class="btn btn-primary" type="submit" data-submit hidden>開始掃描</button>
+      </div>
+    </div>
+  </form>
+</section>
+{% endblock %}

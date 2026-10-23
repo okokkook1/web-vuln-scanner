@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+{% if scan %}
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/findings">← 回弱點清單</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/diff">與前次比較</a>
+{% endif %}
+{% if finding.fingerprint %}
+<a class="btn btn-ghost btn-sm" href="/fingerprints?fingerprint={{ finding.fingerprint | urlencode }}">跨掃描歷史</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="finding-head">
+    <div>
+      <div class="finding-meta">
+        <span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span>
+        <span class="badge category">{{ finding.category or '其他' }}</span>
+        {% if finding.suppressed %}<span class="badge info">已抑制</span>{% endif %}
+        <span class="badge category">{{ finding.review_status | review_label }}</span>
+        <span class="muted small">信心度 {{ finding.confidence | confidence_label }}</span>
+        <span class="muted small mono">{{ finding.rule_id }}</span>
+      </div>
+      <h2 class="finding-title">{{ finding.title }}</h2>
+      <div class="muted small" style="margin-top:6px">{{ finding.created_at | dt }}</div>
+    </div>
+    <button class="btn btn-ghost btn-sm" type="button" data-copy-target="#evidence-box">複製證據</button>
+  </div>
+
+  <div class="sep"></div>
+
+  <dl class="detail-grid">
+    <dt>位置</dt><dd class="mono">{{ finding.method }} {{ finding.url }}</dd>
+    <dt>參數</dt><dd class="mono">{{ finding.parameter or '—' }}</dd>
+    <dt>掃描</dt><dd>{% if scan %}<a href="/scans/{{ scan.id }}">{{ scan.id }}</a>{% else %}—{% endif %}</dd>
+    <dt>Fingerprint</dt>
+    <dd class="mono small">
+      <a href="/fingerprints?fingerprint={{ finding.fingerprint | urlencode }}">{{ finding.fingerprint or '—' }}</a>
+    </dd>
+    <dt>OWASP / CWE</dt>
+    <dd>
+      <div class="chip-row" style="margin-top:0">
+        {% for key, value in refs.items() %}<span class="chip">{{ key }}: {{ value }}</span>{% else %}<span class="muted">—</span>{% endfor %}
+      </div>
+    </dd>
+  </dl>
+
+  {% if finding.description %}
+  <div class="sep"></div>
+  <h3>說明</h3>
+  <p>{{ finding.description }}</p>
+  {% endif %}
+
+  <div class="sep"></div>
+  <h3>證據</h3>
+  <pre class="evidence" id="evidence-box">{{ evidence | pretty }}</pre>
+
+  {% if finding.remediation %}
+  <div class="sep"></div>
+  <h3>修補建議</h3>
+  <p>{{ finding.remediation }}</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>人工驗證狀態</h2>
+      <p>標記誤報、已確認或接受風險；狀態依 fingerprint 套用到所有掃描的相同發現，不會修改目標。</p>
+      <p class="muted small">嚴重度升級、誤報證據改變或接受風險到期時，會自動回到待確認。</p>
+    </div>
+  </div>
+  <form method="post" action="/findings/{{ finding.id }}/review">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+    <div class="form-row">
+      <label class="field">
+        <span class="field-label">狀態</span>
+        <select class="select" name="status">
+          {% for value, label in review_labels.items() %}
+          <option value="{{ value }}" {{ 'selected' if finding.review_status == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">更新者</span>
+        <input class="input" type="text" name="updated_by"
+          value="{{ finding.review_updated_by or 'local' }}">
+      </label>
+      <label class="field">
+        <span class="field-label">接受風險到期日（選填）</span>
+        <input class="input" type="date" name="expires_at"
+          value="{{ finding.review_expires_at.strftime('%Y-%m-%d') if finding.review_expires_at else '' }}">
+      </label>
+    </div>
+    <label class="field">
+      <span class="field-label">驗證備註（誤報／接受風險必填）</span>
+      <textarea class="textarea" name="note" rows="3">{{ finding.review_note }}</textarea>
+    </label>
+    <button class="btn btn-primary" type="submit">儲存驗證狀態</button>
+    {% if finding.review_updated_at %}
+    <span class="muted small" style="margin-left:10px">
+      最後更新：{{ finding.review_updated_at | dt }} · {{ finding.review_updated_by or '—' }}
+      {% if finding.review_expires_at %} · 到期：{{ finding.review_expires_at | dt }}{% endif %}
+    </span>
+    {% endif %}
+  </form>
+</section>
+
+{% if review_history %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>驗證歷程</h2>
+      <p>每次狀態或備註變更都會保留紀錄。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>時間</th><th>狀態</th><th>到期</th><th>更新者</th><th>備註</th></tr></thead>
+      <tbody>
+      {% for event in review_history %}
+        <tr>
+          <td class="mono nowrap">{{ event.created_at | dt }}</td>
+          <td><span class="badge category">{{ event.status | review_label }}</span></td>
+          <td class="nowrap">{% if event.expires_at %}{{ event.expires_at | dt }}{% else %}—{% endif %}</td>
+          <td>{{ event.updated_by or '—' }}</td>
+          <td>{{ event.note or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if finding.suppressed %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>此發現已抑制</h2>
+      <p>相同 rule、method、host、path 與參數的發現會跨掃描自動隱藏。</p>
+    </div>
+    <span class="badge info">已抑制</span>
+  </div>
+  <div class="alert alert-warn">
+    <strong>原因：</strong>{{ finding.suppression_reason or '—' }}<br>
+    <span class="muted small">建立者：{{ finding.suppression_created_by or '—' }} · {{ finding.suppression_created_at | dt }}</span>
+  </div>
+  <form method="post" action="/findings/{{ finding.id }}/unsuppress">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+    <button class="btn btn-ghost" type="submit">取消抑制</button>
+  </form>
+</section>
+{% else %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>抑制此發現</h2>
+      <p>抑制規則會套用到之後相同路徑與參數的掃描結果。</p>
+    </div>
+  </div>
+  <form method="post" action="/findings/{{ finding.id }}/suppress">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+    <label class="field">
+      <span class="field-label">抑制原因 <span class="required">*</span></span>
+      <textarea class="textarea" name="reason" rows="3" required
+        placeholder="例如：測試環境的已知誤報、由 WAF 補償控制、已排入下一季修補"></textarea>
+    </label>
+    <label class="field" style="max-width:280px">
+      <span class="field-label">建立者</span>
+      <input class="input" type="text" name="created_by" value="local">
+    </label>
+    <button class="btn btn-danger" type="submit">加入抑制規則</button>
+  </form>
+</section>
+{% endif %}
+
+<div class="muted small">
+  此發現由自動化規則產生，可能包含誤報；請依實際程式碼與設定人工確認。
+</div>
+{% endblock %}

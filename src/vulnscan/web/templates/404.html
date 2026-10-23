@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="empty">
+    <div class="icon">404</div>
+    <h3>找不到頁面</h3>
+    <p>這個路徑不存在，或掃描紀錄已被刪除。</p>
+    <div style="margin-top:14px">
+      <a class="btn btn-primary" href="/">回到儀表板</a>
+      <a class="btn btn-ghost" href="/scans">掃描歷史</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

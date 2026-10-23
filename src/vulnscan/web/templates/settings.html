@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>掃描預設值</h2>
+      <p>套用到下一次新增掃描的表單；不影響已建立的掃描。</p>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+    <div class="form-row">
+      <label class="field">
+        <span class="field-label">預設掃描模式</span>
+        <select class="select" name="default_profile">
+          <option value="passive" {{ 'selected' if settings.default_profile == 'passive' else '' }}>被動盤點</option>
+          <option value="safe" {{ 'selected' if settings.default_profile == 'safe' else '' }}>安全主動</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">每 host 速率（rps）</span>
+        <input class="input" type="number" name="rps_per_host" min="0.2" max="50" step="0.1" value="{{ settings.rps_per_host }}">
+      </label>
+    </div>
+
+    <div class="form-row three">
+      <label class="field">
+        <span class="field-label">每 host 請求上限</span>
+        <input class="input" type="number" name="max_requests_per_host" min="20" max="100000" value="{{ settings.max_requests_per_host }}">
+      </label>
+      <label class="field">
+        <span class="field-label">最大深度</span>
+        <input class="input" type="number" name="max_depth" min="0" max="10" value="{{ settings.max_depth }}">
+      </label>
+      <label class="field">
+        <span class="field-label">Timeout（秒）</span>
+        <input class="input" type="number" name="timeout" min="1" max="60" value="{{ settings.timeout }}">
+      </label>
+    </div>
+
+    <label class="field">
+      <span class="field-label">User-Agent</span>
+      <input class="input" type="text" name="user_agent" value="{{ settings.user_agent }}">
+    </label>
+
+    <label class="field">
+      <span class="field-label">Proxy <span class="opt">選填</span></span>
+      <input class="input" type="text" name="proxy" value="{{ settings.proxy or '' }}" placeholder="http://127.0.0.1:8080">
+      <div class="hint">所有掃描請求會經過此 proxy；留空表示直連。</div>
+    </label>
+
+    <button class="btn btn-primary" type="submit">儲存設定</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>內建檢查</h2>
+      <p>v1 規則為內建；YAML 自訂規則留待後續版本。</p>
+    </div>
+    <span class="badge category">唯讀</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>類別</th><th>檢查項目</th><th>適用模式</th></tr></thead>
+      <tbody>
+      {% for group in catalog %}
+        <tr>
+          <td><strong>{{ group.category }}</strong></td>
+          <td>{% for item in group["items"] %}<div>{{ item }}</div>{% endfor %}</td>
+          <td class="muted">{{ group.profiles }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>本機資訊</h2>
+      <p>所有資料都留在這台電腦。</p>
+    </div>
+  </div>
+  <dl class="detail-grid">
+    <dt>版本</dt><dd>{{ app_version }}</dd>
+    <dt>資料目錄</dt><dd class="mono">{{ data_dir }}</dd>
+    <dt>資料庫</dt><dd class="mono">{{ data_dir }}/vulnscan.db</dd>
+    <dt>預設位址</dt><dd class="mono">http://127.0.0.1:8765</dd>
+  </dl>
+  <div class="alert alert-info" style="margin-top:16px;margin-bottom:0">
+    v1 僅綁定 127.0.0.1，尚未提供遠端存取或存取 token。請勿將此 UI 直接暴露到網路。
+  </div>
+</section>
+{% endblock %}

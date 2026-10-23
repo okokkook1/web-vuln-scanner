@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/scans">掃描歷史</a>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>跨掃描抑制規則</h2>
+      <p>相同 rule、method、host、path 與參數的發現會自動隱藏，但仍保留在資料庫中。</p>
+    </div>
+    <span class="badge category">{{ suppressions | length }} 條</span>
+  </div>
+
+  {% if suppressions %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>Rule</th><th>位置</th><th>參數</th><th>原因</th><th>建立者</th><th>時間</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for item in suppressions %}
+        <tr>
+          <td class="mono">{{ item.rule_id }}</td>
+          <td class="mono">{{ item.method }} {{ item.host }}{{ item.path }}</td>
+          <td class="mono">{{ item.parameter or '—' }}</td>
+          <td>{{ item.reason }}</td>
+          <td>{{ item.created_by }}</td>
+          <td class="muted nowrap">{{ item.created_at | dt }}</td>
+          <td class="nowrap" style="text-align:right">
+            <form method="post" action="/suppressions/{{ item.id }}/delete" class="inline-form"
+              data-confirm="確定要刪除這條抑制規則嗎？之後相同弱點會重新出現。">
+              <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+              <button class="btn btn-danger btn-sm" type="submit">刪除</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <div class="icon">⊘</div>
+    <h3>還沒有抑制規則</h3>
+    <p>在弱點詳情頁可以將已知誤報或接受風險的項目加入抑制。</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

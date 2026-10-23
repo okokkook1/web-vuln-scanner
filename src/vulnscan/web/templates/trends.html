@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-primary" href="/scans/new">＋ 新增掃描</a>
+{% endblock %}
+
+{% block content %}
+{% if msg %}<div class="alert alert-{{ 'error' if kind == 'error' else 'success' }}">{{ msg }}</div>{% endif %}
+
+{% if groups %}
+{% for group in groups %}
+<section class="card flush" style="margin-bottom:18px">
+  <div class="card-head" style="padding:18px 20px 0">
+    <div>
+      <h2>{% if group.targets %}{{ group.targets | join('、') }}{% else %}未指定目標{% endif %}</h2>
+      <p>
+        {{ group.scan_count }} 次掃描 · 最新 <span class="mono">{{ group.latest.id }}</span>
+        · {{ group.latest.created_at | dt }}
+      </p>
+    </div>
+    <div class="row">
+      <span class="badge category">有效發現 {{ group.latest_findings }}</span>
+      <span class="badge high">高風險以上 {{ group.open_high }}</span>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>掃描</th>
+          <th>日期</th>
+          <th>有效發現</th>
+          <th>新增</th>
+          <th>已確認新增</th>
+          <th>已修復</th>
+          <th>本次未測</th>
+          <th>已排除</th>
+          <th>已確認／待確認</th>
+          <th>嚴重度</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in group.series %}
+        <tr>
+          <td class="mono nowrap">
+            <a href="/scans/{{ row.scan.id }}/diff">{{ row.scan.id }}</a>
+            {% if row.scan.id == group.latest.id %}<span class="badge info">最新</span>{% endif %}
+          </td>
+          <td class="nowrap">{{ row.scan.created_at | dt }}</td>
+          <td class="nums">{{ row.findings }}</td>
+          <td class="nums">{% if row.new is none %}—{% else %}{{ row.new }}{% endif %}</td>
+          <td class="nums">{% if row.new_confirmed is none %}—{% else %}{{ row.new_confirmed }}{% endif %}</td>
+          <td class="nums">{% if row.fixed is none %}—{% else %}{{ row.fixed }}{% endif %}</td>
+          <td class="nums">{% if row.untested is none %}—{% else %}{{ row.untested }}{% endif %}</td>
+          <td class="nums">{% if row.reviewed_out is none %}—{% else %}{{ row.reviewed_out }}{% endif %}</td>
+          <td class="nowrap">
+            <span class="badge category">已確認 {{ row.review_counts.confirmed }}</span>
+            <span class="badge category">待確認 {{ row.review_counts.needs_review }}</span>
+          </td>
+          <td>
+            {% for key in severity_order %}
+            {% if row.severity_counts.get(key) %}
+            <span class="badge {{ key }}">{{ key | severity_label }} {{ row.severity_counts[key] }}</span>
+            {% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% else %}
+<section class="card">
+  <div class="empty">
+    <div class="icon">↗</div>
+    <h3>還沒有可分析的趨勢</h3>
+    <p>完成至少兩次相同目標的掃描後，這裡會顯示新增、修復與驗證狀態的變化。</p>
+    <div style="margin-top:14px"><a class="btn btn-primary" href="/scans/new">新增掃描</a></div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

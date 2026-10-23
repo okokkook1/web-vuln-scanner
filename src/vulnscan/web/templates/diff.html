@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}">掃描進度</a>
+<a class="btn btn-ghost btn-sm" href="/scans/{{ scan.id }}/findings">弱點清單</a>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>與前次掃描比較</h2>
+      <p>依 rule、method、host、path 與參數比對；已抑制的發現不列入差異。</p>
+    </div>
+    <form method="get" class="row">
+      <select class="select" name="previous" style="width:auto;min-width:300px">
+        {% for previous in previous_scans %}
+        <option value="{{ previous.id }}" {{ 'selected' if previous.id == selected_id else '' }}>
+          {{ previous.id }} · {{ previous.created_at | dt }}{% if baseline and previous.id == baseline.id %}（baseline）{% endif %}
+        </option>
+        {% else %}
+        <option value="">沒有可比較的前次掃描</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary btn-sm" type="submit" {% if not previous_scans %}disabled{% endif %}>比較</button>
+    </form>
+  </div>
+
+  {% if msg %}<div class="alert alert-{{ 'error' if kind == 'error' else 'success' }}">{{ msg }}</div>{% endif %}
+  {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+  <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    {% if baseline %}
+    <span class="badge info">目前 baseline：<span class="mono">{{ baseline.id }}</span></span>
+    {% elif baseline_is_current %}
+    <span class="badge info">此掃描是目前 baseline</span>
+    {% else %}
+    <span class="muted small">尚未設定此目標的 baseline；預設會選最近一次可比較的掃描。</span>
+    {% endif %}
+    {% if scan.status in ['completed', 'cancelled'] and not baseline_is_current %}
+    <form method="post" action="/scans/{{ scan.id }}/baseline">
+      <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+      <input type="hidden" name="created_by" value="local">
+      <button class="btn btn-ghost btn-sm" type="submit">將此掃描設為 baseline</button>
+    </form>
+    {% endif %}
+    {% if baseline or baseline_is_current %}
+    <form method="post" action="/scans/{{ scan.id }}/baseline/clear">
+      <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token }}">
+      <button class="btn btn-ghost btn-sm" type="submit">清除 baseline</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if scan.status not in ['completed', 'cancelled'] %}
+  <div class="alert alert-warn">目前掃描尚未完成，差異結果可能不完整。</div>
+  {% endif %}
+
+  {% if not previous_scans %}
+  <div class="empty">
+    <div class="icon">⇄</div>
+    <h3>還沒有可比較的前次掃描</h3>
+    <p>完成兩次相同目標的掃描後，這裡會顯示新增、已修復與未變的弱點。</p>
+    <div style="margin-top:14px"><a class="btn btn-ghost" href="/scans/new">新增掃描</a></div>
+  </div>
+  {% elif result %}
+  <div class="muted small" style="margin-bottom:14px">
+    目前：<span class="mono">{{ result.current.id }}</span> ·
+    前次：<span class="mono">{{ result.previous.id }}</span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card high"><div class="stat-label">新增</div><div class="stat-value">{{ result.summary.new }}</div></div>
+    <div class="stat-card medium"><div class="stat-label">待確認新增</div><div class="stat-value">{{ result.summary.new_needs_review }}</div></div>
+    <div class="stat-card info"><div class="stat-label">已確認新增</div><div class="stat-value">{{ result.summary.new_confirmed }}</div></div>
+    <div class="stat-card success"><div class="stat-label">已修復</div><div class="stat-value">{{ result.summary.fixed }}</div></div>
+    <div class="stat-card"><div class="stat-label">未變</div><div class="stat-value">{{ result.summary.unchanged }}</div></div>
+    <div class="stat-card medium"><div class="stat-label">本次未測</div><div class="stat-value">{{ result.summary.untested }}</div></div>
+    <div class="stat-card"><div class="stat-label">已排除</div><div class="stat-value">{{ result.summary.reviewed_out }}</div></div>
+    <div class="stat-card info"><div class="stat-label">目前已抑制</div><div class="stat-value">{{ result.summary.suppressed }}</div></div>
+  </div>
+
+  {% if result.api_changes %}
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>API 測試覆蓋差異（{{ result.api_changes | length }}）</h2><p>區分「本次未測」與「已修復」，避免 coverage 下降被誤判</p></div>
+      <span class="badge category">API</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>變化</th><th>位置</th><th>前次</th><th>本次</th><th>檢查</th></tr></thead>
+        <tbody>
+        {% for item in result.api_changes %}
+        <tr>
+          <td>
+            {% if item.change == 'became_untested' %}<span class="badge medium">本次未測</span>
+            {% elif item.change == 'became_tested' %}<span class="badge info">本次開始測試</span>
+            {% elif item.change == 'skip_reason_changed' %}<span class="badge category">跳過原因改變</span>
+            {% elif item.change == 'checks_changed' %}<span class="badge category">檢查項目改變</span>
+            {% else %}<span class="badge category">發現數改變</span>{% endif %}
+          </td>
+          <td class="mono">{{ item.path or item.url }}</td>
+          <td>{% if item.previous_tested %}已測{% else %}未測{% endif %}{% if item.previous_skip_reason %}（{{ item.previous_skip_reason }}）{% endif %}</td>
+          <td>{% if item.current_tested %}已測{% else %}未測{% endif %}{% if item.current_skip_reason %}（{{ item.current_skip_reason }}）{% endif %}</td>
+          <td class="mono">{{ (item.previous_checks or []) | join('、') or '—' }} → {{ (item.current_checks or []) | join('、') or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if result.untested %}
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>本次未測的既有發現（{{ result.untested | length }}）</h2><p>前次有、但本次沒有足夠測試覆蓋，不能視為已修復</p></div>
+      <span class="badge medium">Not tested</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>弱點</th><th>位置</th><th>原因</th></tr></thead>
+        <tbody>
+        {% for finding in result.untested %}
+        <tr>
+          <td><a href="/findings/{{ finding.id }}"><strong>{{ finding.title }}</strong></a><div class="muted small mono">{{ finding.rule_id }} · {{ finding.review_status | review_label }}</div></td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+          <td>{{ result.untested_reasons.get(finding.id|string, '—') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if result.reviewed_out %}
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>已排除的新增發現（{{ result.reviewed_out | length }}）</h2><p>已標記為誤報或接受風險，不列入新增 regression</p></div>
+      <span class="badge info">Reviewed out</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>驗證</th><th>弱點</th><th>位置</th></tr></thead>
+        <tbody>
+        {% for finding in result.reviewed_out %}
+        <tr>
+          <td>{{ finding.review_status | review_label }}</td>
+          <td><a href="/findings/{{ finding.id }}">{{ finding.title }}</a><div class="muted small mono">{{ finding.rule_id }}</div></td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if result.bola_changes %}
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>BOLA／BFLA 差異（{{ result.bola_changes | length }}）</h2><p>依兩次掃描的 BOLA／BFLA 候選結果比較</p></div>
+      <span class="badge category">API</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>類型</th><th>變化</th><th>位置</th><th>前次</th><th>本次</th><th>狀態</th></tr></thead>
+        <tbody>
+        {% for item in result.bola_changes %}
+        <tr>
+          <td>{% if item.kind == 'bfla' %}BFLA{% else %}BOLA{% endif %}</td>
+          <td>
+            {% if item.change == 'newly_vulnerable' %}<span class="badge high">新出現疑似授權缺失</span>
+            {% elif item.change == 'no_longer_vulnerable' %}<span class="badge success">不再疑似</span>
+            {% elif item.change == 'coverage_lost' %}<span class="badge medium">本次未測</span>
+            {% elif item.change == 'coverage_gained' %}<span class="badge info">本次開始測試</span>
+            {% else %}<span class="badge category">狀態改變</span>{% endif %}
+          </td>
+          <td class="mono">{{ item.path or item.url }}</td>
+          <td>{{ item.previous }}</td>
+          <td>{{ item.current }}</td>
+          <td class="mono">{{ item.primary_status or '—' }} / {{ item.secondary_status or '—' }} / {{ item.unauth_status or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>新增的弱點（{{ result.new | length }}）</h2><p>前次沒有、這次出現</p></div>
+      <span class="badge high">New</span>
+    </div>
+    {% if result.new %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>參數</th><th>信心</th></tr></thead>
+        <tbody>
+        {% for finding in result.new %}
+        <tr>
+          <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+          <td><a href="/findings/{{ finding.id }}"><strong>{{ finding.title }}</strong></a><div class="muted small mono">{{ finding.rule_id }} · {{ finding.review_status | review_label }}</div></td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+          <td class="mono">{{ finding.parameter or '—' }}</td>
+          <td>{{ finding.confidence | confidence_label }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty" style="padding:24px"><p>沒有新增弱點。</p></div>{% endif %}
+  </section>
+
+  <section class="card flush" style="margin-top:18px">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><h2>已修復（{{ result.fixed | length }}）</h2><p>前次有、這次不再出現</p></div>
+      <span class="badge status-completed">Fixed</span>
+    </div>
+    {% if result.fixed %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>參數</th><th>信心</th></tr></thead>
+        <tbody>
+        {% for finding in result.fixed %}
+        <tr>
+          <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+          <td><a href="/findings/{{ finding.id }}"><strong>{{ finding.title }}</strong></a><div class="muted small mono">{{ finding.rule_id }} · {{ finding.review_status | review_label }}</div></td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+          <td class="mono">{{ finding.parameter or '—' }}</td>
+          <td>{{ finding.confidence | confidence_label }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<div class="empty" style="padding:24px"><p>沒有已修復項目。</p></div>{% endif %}
+  </section>
+
+  <details class="card" style="margin-top:18px">
+    <summary style="cursor:pointer;font-weight:650">未變的弱點（{{ result.unchanged | length }}）</summary>
+    {% if result.unchanged %}
+    <div class="table-wrap" style="margin-top:12px">
+      <table class="data">
+        <thead><tr><th>嚴重度</th><th>弱點</th><th>位置</th><th>參數</th></tr></thead>
+        <tbody>
+        {% for finding in result.unchanged %}
+        <tr>
+          <td><span class="badge {{ finding.severity }}">{{ finding.severity | severity_label }}</span></td>
+          <td><a href="/findings/{{ finding.id }}">{{ finding.title }}</a></td>
+          <td class="mono">{{ finding.method }} {{ finding.url }}</td>
+          <td class="mono">{{ finding.parameter or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="muted small" style="margin-top:10px">沒有未變項目。</p>{% endif %}
+  </details>
+  {% endif %}
+</section>
+{% endblock %}

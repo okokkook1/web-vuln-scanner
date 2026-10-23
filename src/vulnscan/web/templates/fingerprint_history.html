@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+{% if latest_finding_id %}
+<a class="btn btn-ghost btn-sm" href="/findings/{{ latest_finding_id }}">最新發現</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>{{ title }}</h2>
+      <p>{{ method }} <span class="mono">{{ url }}</span>{% if parameter %} · 參數 <span class="mono">{{ parameter }}</span>{% endif %}</p>
+    </div>
+    <div class="row">
+      <span class="badge {{ latest_severity }}">{{ latest_severity | severity_label }}</span>
+      <span class="badge category">{{ review.status | review_label }}</span>
+      {% if suppression %}<span class="badge info">已抑制</span>{% endif %}
+    </div>
+  </div>
+
+  <dl class="detail-grid">
+    <dt>Fingerprint</dt><dd class="mono small">{{ fingerprint }}</dd>
+    <dt>Rule ID</dt><dd class="mono">{{ rule_id }}</dd>
+    <dt>首次出現</dt><dd>{{ first_seen | dt }}</dd>
+    <dt>最近出現</dt><dd>{{ last_seen | dt }}</dd>
+  </dl>
+
+  <div class="stat-grid" style="margin-top:14px">
+    <div class="stat-card"><div class="stat-label">出現次數</div><div class="stat-value">{{ occurrence_count }}</div></div>
+    <div class="stat-card"><div class="stat-label">掃描次數</div><div class="stat-value">{{ scan_count }}</div></div>
+    {% for key, count in severity_counts.items() %}
+    <div class="stat-card {{ key }}"><div class="stat-label">{{ key | severity_label }}</div><div class="stat-value">{{ count }}</div></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>目前驗證狀態</h2>
+      <p>狀態依 fingerprint 套用到所有掃描的相同發現。</p>
+    </div>
+    <span class="badge category">{{ review.status | review_label }}</span>
+  </div>
+  {% if review.note %}
+  <p><strong>備註：</strong>{{ review.note }}</p>
+  {% endif %}
+  {% if review.updated_by %}
+  <p class="muted small">
+    最後更新：{{ review.updated_at | dt }} · {{ review.updated_by }}
+    {% if review.expires_at %} · 接受風險到期：{{ review.expires_at | dt }}{% endif %}
+  </p>
+  {% elif review.status == 'needs_review' %}
+  <p class="muted">目前尚未有人工驗證結果。</p>
+  {% endif %}
+  {% if review.severity %}
+  <p class="muted small">審核時嚴重度：{{ review.severity | severity_label }}</p>
+  {% endif %}
+
+  {% if suppression %}
+  <div class="alert alert-warn" style="margin-top:12px">
+    <strong>此 fingerprint 已抑制：</strong>{{ suppression.reason or '—' }}<br>
+    <span class="muted small">建立者：{{ suppression.created_by or '—' }} · {{ suppression.created_at | dt }}</span>
+  </div>
+  {% endif %}
+
+  {% if latest_finding_id %}
+  <div class="row" style="margin-top:14px">
+    <a class="btn btn-primary" href="/findings/{{ latest_finding_id }}">調整驗證狀態</a>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card flush">
+  <div class="card-head" style="padding:18px 20px 0">
+    <div>
+      <h2>出現紀錄（{{ occurrence_count }}）</h2>
+      <p>相同 fingerprint 在不同掃描的實際發現。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>掃描</th><th>掃描時間</th><th>發現時間</th><th>嚴重度</th><th>信心</th><th>位置</th><th>參數</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for item in occurrences %}
+        <tr>
+          <td class="mono nowrap">
+            {% if item.scan %}<a href="/scans/{{ item.scan.id }}">{{ item.scan.id }}</a>{% else %}{{ item.finding.scan_id }}{% endif %}
+          </td>
+          <td class="nowrap">{% if item.scan %}{{ item.scan.created_at | dt }}{% else %}—{% endif %}</td>
+          <td class="nowrap">{{ item.finding.created_at | dt }}</td>
+          <td><span class="badge {{ item.finding.severity }}">{{ item.finding.severity | severity_label }}</span></td>
+          <td>{{ item.finding.confidence | confidence_label }}</td>
+          <td class="mono">{{ item.finding.method }} {{ item.finding.url }}</td>
+          <td class="mono">{{ item.finding.parameter or '—' }}</td>
+          <td><a class="btn btn-ghost btn-sm" href="/findings/{{ item.finding.id }}">查看</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card flush">
+  <div class="card-head" style="padding:18px 20px 0">
+    <div>
+      <h2>驗證歷程（{{ events | length }}）</h2>
+      <p>包含人工變更與系統自動重開。</p>
+    </div>
+  </div>
+  {% if events %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>時間</th><th>狀態</th><th>到期</th><th>更新者</th><th>備註</th></tr></thead>
+      <tbody>
+      {% for event in events %}
+        <tr>
+          <td class="mono nowrap">{{ event.created_at | dt }}</td>
+          <td><span class="badge category">{{ event.status | review_label }}</span></td>
+          <td class="nowrap">{% if event.expires_at %}{{ event.expires_at | dt }}{% else %}—{% endif %}</td>
+          <td>{{ event.updated_by or '—' }}</td>
+          <td>{{ event.note or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="padding:24px"><p>尚無驗證歷程。</p></div>
+  {% endif %}
+</section>
+{% endblock %}
