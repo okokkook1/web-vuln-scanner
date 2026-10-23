@@ -311,7 +311,11 @@ vulnscan unsuppress --finding 42
   - 用 CLI 設定 baseline
   - 驗證 `new`／`new_confirmed` gate
   - 上傳 HTML／JSON 報告 artifact
+- Dependabot 每週檢查 Python dependencies 與 GitHub Actions
 - 可選 Playwright GUI E2E（`VULNSCAN_E2E=1`）
+
+> Private repo 的 branch protection 需要 GitHub Pro／Team 或公開 repo；
+> 免費 private repo 目前無法透過 API 啟用 required status checks。
 
 ## API 掃描與 OpenAPI 匯入
 

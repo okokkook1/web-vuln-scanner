@@ -6,6 +6,7 @@
 - Added a real scan end-to-end CI fixture: passive scan, safe scan, baseline, and diff gates.
 - CI uploads the real scan HTML/JSON reports as an artifact.
 - Hardened CI actions and permissions.
+- Added weekly Dependabot updates for Python and GitHub Actions.
 
 ## 0.23.1
 
