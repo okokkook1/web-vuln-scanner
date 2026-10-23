@@ -24,11 +24,16 @@ jobs:
         run: python -m pip wheel . --no-deps -w dist
       - name: Wheel install smoke
         run: |
+          set -euo pipefail
           python -m pip install --no-deps --force-reinstall dist/*.whl
           python -c "import pathlib, vulnscan; print(vulnscan.__version__); print(pathlib.Path(vulnscan.__file__).resolve())"
-          python -c "from importlib.resources import files; assert files('vulnscan').joinpath('web/templates/trends.html').is_file()"
+          echo "version import ok"
+          python -c "from importlib.resources import files; assert files('vulnscan').joinpath('web/templates/trends.html').is_file(); print('template data ok')"
+          vulnscan --help > /dev/null
+          echo "cli help ok"
           vulnscan rules > /dev/null
-          vulnscan diff --help | grep -- --fail-on
+          echo "rules command ok"
+          python -c "import subprocess, sys; r = subprocess.run([sys.executable, '-m', 'vulnscan', 'diff', '--help'], capture_output=True, text=True); assert r.returncode == 0, r.stderr; assert '--fail-on' in r.stdout, r.stdout; print('diff help ok')"
       - name: Seed diff gate fixture
         run: python scripts/ci_gate_fixture.py --data-dir /tmp/vulnscan-ci-gate
       - name: Diff gate fails on confirmed regression
