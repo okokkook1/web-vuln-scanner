@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+import yaml
 
 from vulnscan.audit import AuditLogger
 from vulnscan.auth import AuthError, prepare_auth
@@ -179,7 +180,10 @@ async def test_bad_password_fails_login(tmp_path: Path):
 
 async def test_authenticated_scan_crawls_private_area(tmp_path: Path):
     with fixture_server() as base:
-        config = make_config(base, auth=_form_auth())
+        config = make_config(
+            base,
+            auth=_form_auth(verify_url="/dashboard"),
+        )
         scope = build_scope(config)
         db = Database(tmp_path / "vulnscan.db")
         db.init()
@@ -210,6 +214,8 @@ async def test_authenticated_scan_crawls_private_area(tmp_path: Path):
     scope_text = (tmp_path / "scans" / scan_id / "scope.yaml").read_text(encoding="utf-8")
     assert "demo123" not in scope_text
     assert "auth=ok" not in scope_text
+    scope_data = yaml.safe_load(scope_text)
+    assert scope_data["api"]["auth_session"]["valid"] is True
 
 
 def test_bola_form_auth_builder_supports_second_account_login():

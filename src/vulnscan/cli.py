@@ -5,13 +5,14 @@ import json
 import os
 import threading
 import webbrowser
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import typer
 import yaml
 
 from . import __version__
+from .backup import BackupError, create_backup, restore_backup
 from .checks import CHECK_CATALOG
 from .config import DEFAULT_USER_AGENT, default_data_dir
 from .db import Database, finding_fingerprint, finding_to_dict
@@ -792,6 +793,58 @@ def baseline_clear_command(
         typer.echo(f"已清除 baseline：{scan}")
     else:
         typer.echo("此目標沒有 baseline。")
+
+
+@app.command("backup")
+def backup_command(
+    out: Path | None = typer.Option(
+        None,
+        "--out",
+        help="Backup ZIP path (default: backups/vulnscan-<timestamp>.zip).",
+    ),
+    data_dir: Path | None = typer.Option(None, "--data-dir"),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Overwrite an existing backup file.",
+    ),
+) -> None:
+    """Create a consistent backup of the SQLite DB and scan artifacts."""
+    source_dir = (data_dir or default_data_dir()).expanduser().resolve()
+    target = out
+    if target is None:
+        target = Path("backups") / f"vulnscan-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    try:
+        result = create_backup(source_dir, target, overwrite=overwrite)
+    except BackupError as exc:
+        typer.echo(f"備份失敗：{exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"備份完成：{result['path']}")
+    typer.echo(f"資料庫：{result['database_size']} bytes")
+    typer.echo(f"附加檔案：{result['file_count']} 個")
+    typer.echo(f"備份大小：{result['size']} bytes")
+
+
+@app.command("restore")
+def restore_command(
+    source: Path = typer.Option(..., "--from", help="Backup ZIP path."),
+    data_dir: Path | None = typer.Option(None, "--data-dir"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Restore into a non-empty data directory; old data is renamed.",
+    ),
+) -> None:
+    """Restore a backup created by `vulnscan backup`."""
+    target_dir = (data_dir or default_data_dir()).expanduser().resolve()
+    try:
+        result = restore_backup(source, target_dir, force=force)
+    except BackupError as exc:
+        typer.echo(f"還原失敗：{exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"還原完成：{result['path']}")
+    if result["previous"]:
+        typer.echo(f"舊資料已保留：{result['previous']}")
 
 
 @app.command("suppress")

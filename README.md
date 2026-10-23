@@ -27,7 +27,8 @@
 - 主要／第二／未登入 client 共用 rate limiter 與 request budget，BOLA 請求即時計入總量
 - API 測試 budget 可設定，報告會列出每個 POST 端點的已測／跳過原因
 - API／BOLA Coverage Diff：區分「本次未測」與「已修復」，避免 coverage 下降被誤判
-- 表單登入 session 失效時會嘗試重新登入一次；其他登入方式安全略過
+- 表單登入會在主動檢查、API 與 BOLA 前確認 session；失效時嘗試重新登入一次
+- 其他登入方式若 session 失效會安全略過，不會嘗試猜測 refresh token 流程
 - 掃描歷史、弱點篩選、單檔 HTML 報告、JSON 報告
 - 弱點人工驗證狀態：待確認、已確認、誤報、接受風險；支援篩選、批次更新、完整驗證歷程與報告
 - 驗證狀態以 fingerprint 跨掃描共用：新掃描的相同發現會自動沿用狀態、備註與歷程
@@ -315,6 +316,10 @@ vulnscan unsuppress --finding 42
   - 驗證 `new`／`new_confirmed` gate
   - 上傳 HTML／JSON 報告 artifact
 - Dependabot 每週檢查 Python dependencies 與 GitHub Actions
+- `.github/workflows/release.yml` 在推送 `v*` tag 時：
+  - 建置 wheel
+  - 驗證 tag 與套件版本一致
+  - 自動建立 GitHub Release 並附上 wheel
 - 可選 Playwright GUI E2E（`VULNSCAN_E2E=1`）
 
 > Private repo 的 branch protection 需要 GitHub Pro／Team 或公開 repo；
@@ -501,3 +506,19 @@ tests/                  # pytest + 本機靶場
 SQLite 使用 WAL mode；掃描歷史與發現都留在本機。
 啟動時會依 `PRAGMA user_version` 套用增量 migration；舊 finding 會自動補上
 fingerprint 並建立索引，既有掃描資料不會被重建或刪除。
+
+### 備份與還原
+
+```powershell
+# 建立 ZIP 備份（DB 快照 + scans/ + settings.json）
+vulnscan backup --out backups/vulnscan.zip
+
+# 還原到新目錄
+vulnscan restore --from backups/vulnscan.zip --data-dir data-restored
+
+# 覆蓋既有資料目錄時，舊資料會先改名保留
+vulnscan restore --from backups/vulnscan.zip --data-dir data --force
+```
+
+備份使用 SQLite backup API，不直接複製 WAL 中的不完整狀態。
+還原前會檢查 ZIP 路徑安全、DB integrity 與 `scans` 資料表。

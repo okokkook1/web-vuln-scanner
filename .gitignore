@@ -6,7 +6,9 @@ __pycache__/
 data/
 .demo-data/
 .ci-gate/
+backups/
 reports/
+*.pre-restore-*
 auth-state*.json
 *.state.json
 dist/

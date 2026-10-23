@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.27.0
+
+- Added `vulnscan backup` and `vulnscan restore` with a consistent SQLite snapshot.
+- Backups include scan artifacts and settings; restore validates ZIP paths and DB integrity.
+- Restoring over existing data requires `--force` and preserves the old directory.
+- Form-login sessions are revalidated and refreshed before active checks in addition to API/BOLA.
+- Added a tag-triggered GitHub Release workflow that builds the wheel and verifies the version.
+- Added backup paths to `.gitignore` and documented backup/restore.
+
 ## 0.26.0
 
 - Added BOLA/BFLA second-account form login in the GUI and CLI.

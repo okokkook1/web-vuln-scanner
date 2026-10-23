@@ -324,6 +324,35 @@ class ScanEngine:
             self._emit("passive", f"被動檢查完成：{len(passive)} 個發現", 70)
 
             active: list[Finding] = []
+            if (
+                self.config.profile in (Profile.SAFE, Profile.FULL)
+                and self.config.auth.type is AuthType.FORM
+                and (self.config.auth.verify_url or "").strip()
+            ):
+                self._emit("active", "主動檢查前確認登入 session…", 71)
+                self._session_valid, self._session_reason = (
+                    await self._check_auth_session(scope, progress=71)
+                )
+                if not self._session_valid:
+                    self._session_valid, self._session_reason = (
+                        await self._recover_auth_session(
+                            scope,
+                            audit,
+                            engine=self._http,
+                            auth=self.config.auth,
+                            meta_key="auth_session",
+                            label="主要帳號",
+                            progress=71,
+                        )
+                    )
+                self._persist_scope(scope, audit)
+                if not self._session_valid:
+                    self._emit(
+                        "active",
+                        f"登入 session 無效（{self._session_reason}），"
+                        "主動檢查可能不完整",
+                        71,
+                    )
             if self.config.profile in (Profile.SAFE, Profile.FULL):
                 self._emit("active", "開始安全主動檢查…", 72)
                 active_raw = await run_active(all_endpoints, ctx)
@@ -777,6 +806,7 @@ class ScanEngine:
         auth: AuthConfig | None,
         meta_key: str,
         label: str,
+        progress: int = 88,
     ) -> tuple[bool, str]:
         if auth is None or engine is None:
             return False, "缺少認證或 HTTP client"
@@ -794,13 +824,14 @@ class ScanEngine:
             self._api_meta[meta_key]["recovered"] = False
             self._api_meta[meta_key]["recovery_error"] = str(exc)
             return False, str(exc)
-        self._emit("active", f"{label} session 已重新登入，重新檢查…", 88)
+        self._emit("active", f"{label} session 已重新登入，重新檢查…", progress)
         valid, reason = await self._check_auth_session(
             scope,
             engine=engine,
             auth=auth,
             meta_key=meta_key,
             label=label,
+            progress=progress,
         )
         self._api_meta.setdefault(meta_key, {})["recovered"] = valid
         if not valid:
@@ -815,6 +846,7 @@ class ScanEngine:
         auth: AuthConfig | None = None,
         meta_key: str = "auth_session",
         label: str = "登入",
+        progress: int = 87,
     ) -> tuple[bool, str]:
         auth = auth or self.config.auth
         engine = engine or self._http
@@ -840,7 +872,7 @@ class ScanEngine:
                 "url": safe_url,
             }
             return False, "驗證 URL 不在授權 scope"
-        self._emit("active", f"檢查{label} session 有效性…", 87)
+        self._emit("active", f"檢查{label} session 有效性…", progress)
         try:
             page = await engine.get(check_url, rule_id="auth-session-check")
         except ScopeError as exc:
