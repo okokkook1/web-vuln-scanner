@@ -17,6 +17,7 @@ from ...audit import AuditLogger
 from ...auth import AuthError, AuthMaterials, prepare_auth
 from ...config import RuntimeSettings
 from ...models import AdvancedCheck, AuthConfig, AuthType, Profile, Scan, ScanConfig, new_scan_id
+from ...openapi_cache import OpenAPIRefCache, auth_cache_key
 from ...openapi_import import parse_openapi_report, preview_post_endpoints
 from ...openapi_refs import bundle_external_refs, fingerprint_spec
 from ...presentation import load_json, scan_stats
@@ -79,6 +80,13 @@ def _default_form(settings: RuntimeSettings) -> dict:
         "storage_token_key": "",
         "storage_header_name": "",
         "storage_header_prefix": "Bearer ",
+        "refresh_url": "",
+        "refresh_token": "",
+        "refresh_client_id": "",
+        "refresh_token_field": "refresh_token",
+        "refresh_access_token_field": "access_token",
+        "refresh_header_name": "",
+        "refresh_header_prefix": "Bearer ",
         "browser_login_url": "",
         "browser_token_key": "",
         "browser_header_name": "",
@@ -137,6 +145,17 @@ def _form_values(form) -> dict:
         "storage_token_key": str(form.get("storage_token_key") or ""),
         "storage_header_name": str(form.get("storage_header_name") or ""),
         "storage_header_prefix": str(form.get("storage_header_prefix") or "Bearer "),
+        "refresh_url": str(form.get("refresh_url") or ""),
+        "refresh_token": "",
+        "refresh_client_id": str(form.get("refresh_client_id") or ""),
+        "refresh_token_field": str(form.get("refresh_token_field") or "refresh_token"),
+        "refresh_access_token_field": str(
+            form.get("refresh_access_token_field") or "access_token"
+        ),
+        "refresh_header_name": str(form.get("refresh_header_name") or ""),
+        "refresh_header_prefix": str(
+            form.get("refresh_header_prefix") or "Bearer "
+        ),
         "browser_login_url": str(form.get("browser_login_url") or ""),
         "browser_token_key": str(form.get("browser_token_key") or ""),
         "browser_header_name": str(form.get("browser_header_name") or ""),
@@ -166,6 +185,27 @@ def _form_values(form) -> dict:
     }
 
 
+def _refresh_values(form) -> dict:
+    refresh_url = str(form.get("refresh_url") or "").strip()
+    if not refresh_url:
+        return {}
+    return {
+        "refresh_url": refresh_url,
+        "refresh_token": str(form.get("refresh_token") or ""),
+        "refresh_client_id": str(form.get("refresh_client_id") or "") or None,
+        "refresh_token_field": str(
+            form.get("refresh_token_field") or "refresh_token"
+        ),
+        "refresh_access_token_field": str(
+            form.get("refresh_access_token_field") or "access_token"
+        ),
+        "refresh_header_name": str(form.get("refresh_header_name") or "") or None,
+        "refresh_header_prefix": str(
+            form.get("refresh_header_prefix") or "Bearer "
+        ),
+    }
+
+
 def _build_auth(
     form,
     storage_state: dict | None = None,
@@ -180,12 +220,14 @@ def _build_auth(
     verify_text = str(form.get("auth_verify_text") or "") or None
     if auth_type is AuthType.NONE:
         return AuthConfig()
+    refresh = _refresh_values(form)
     if auth_type is AuthType.COOKIE:
         return AuthConfig(
             type=auth_type,
             cookie=str(form.get("auth_cookie") or ""),
             verify_url=verify_url,
             verify_text=verify_text,
+            **refresh,
         )
     if auth_type is AuthType.HEADER:
         return AuthConfig(
@@ -194,6 +236,7 @@ def _build_auth(
             header_value=str(form.get("auth_header_value") or ""),
             verify_url=verify_url,
             verify_text=verify_text,
+            **refresh,
         )
     if auth_type is AuthType.STATE:
         if not storage_state:
@@ -206,6 +249,7 @@ def _build_auth(
             storage_header_prefix=str(form.get("storage_header_prefix") or ""),
             verify_url=verify_url,
             verify_text=verify_text,
+            **refresh,
         )
     if auth_type is AuthType.BROWSER:
         if not browser_state:
@@ -218,6 +262,7 @@ def _build_auth(
             storage_header_prefix=str(form.get("browser_header_prefix") or ""),
             verify_url=verify_url,
             verify_text=verify_text,
+            **refresh,
         )
     return AuthConfig(
         type=auth_type,
@@ -228,6 +273,7 @@ def _build_auth(
         password_field=str(form.get("login_pass_field") or "password"),
         verify_url=verify_url,
         verify_text=verify_text,
+        **refresh,
     )
 
 
@@ -632,20 +678,30 @@ async def preview_api(request: Request):
             spec = openapi_spec or {}
             source = openapi_name or "OpenAPI 檔案"
 
+        cache = OpenAPIRefCache(
+            request.app.state.data_dir / "openapi-cache"
+        )
+        cache_key = auth_cache_key(auth)
+
         async def fetch_external(url: str) -> tuple[dict, str]:
             nonlocal audit
+            cached = cache.get(url, cache_key)
+            if cached is not None:
+                return cached
             if audit is None:
                 audit = AuditLogger(
                     request.app.state.data_dir / "preview-audit.jsonl",
                     "preview",
                 )
-            return await _fetch_preview_openapi(
+            document, final_url = await _fetch_preview_openapi(
                 url,
                 scope,
                 settings,
                 materials,
                 audit,
             )
+            cache.set(url, final_url, document, cache_key)
+            return document, final_url
 
         bundle = await bundle_external_refs(
             spec,

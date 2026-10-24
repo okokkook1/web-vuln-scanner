@@ -80,6 +80,18 @@ class DemoHandler(BaseHTTPRequestHandler):
         if path == "/profile":
             self._send(200, "<html><body><h1>Profile saved</h1></body></html>")
             return
+        if path == "/api/refresh":
+            data = parse_qs(body)
+            if (data.get("refresh_token") or [""])[0] != "refresh-demo":
+                self._send(401, '{"error":"invalid refresh token"}', "application/json")
+                return
+            self._send(
+                200,
+                json.dumps({"access_token": "refreshed-token"}),
+                "application/json",
+                extra={"Set-Cookie": "auth=ok; Path=/; HttpOnly; SameSite=Lax"},
+            )
+            return
         if path == "/api/echo":
             try:
                 data = json.loads(body) if body else {}

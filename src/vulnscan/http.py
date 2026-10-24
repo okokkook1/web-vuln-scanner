@@ -102,6 +102,18 @@ class HttpEngine:
         if cookies:
             self.client.cookies.update(cookies)
 
+    @property
+    def auth_headers(self) -> dict[str, str]:
+        return {
+            name: self.client.headers[name]
+            for name in self._auth_header_names
+            if name in self.client.headers
+        }
+
+    @property
+    def auth_cookies(self) -> dict[str, str]:
+        return {key: value for key, value in self.client.cookies.items()}
+
     def _check_cancel(self) -> None:
         if self.cancel_event.is_set():
             raise ScanCancelled("掃描已取消")

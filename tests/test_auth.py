@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from vulnscan.audit import AuditLogger
-from vulnscan.auth import AuthError, prepare_auth
+from vulnscan.auth import AuthError, prepare_auth, refresh_auth
 from vulnscan.db import Database
 from vulnscan.engine import ScanEngine
 from vulnscan.http import HttpEngine
@@ -164,6 +164,61 @@ async def test_second_account_form_login_materials(tmp_path: Path):
             audit.close()
 
     assert materials.cookies.get("auth") == "ok"
+
+
+async def test_token_refresh_updates_header_and_cookie(tmp_path: Path):
+    with fixture_server() as base:
+        config = make_config(
+            base,
+            auth=AuthConfig(
+                type=AuthType.HEADER,
+                header_name="X-API-Key",
+                header_value="old-key",
+                refresh_url="/api/refresh",
+                refresh_token="refresh-demo",
+                refresh_header_name="Authorization",
+            ),
+        )
+        scope = build_scope(config)
+        audit = AuditLogger(tmp_path / "refresh.jsonl", "refresh")
+        try:
+            materials = await refresh_auth(
+                config,
+                scope,
+                audit,
+                headers={"X-API-Key": "old-key"},
+                cookies={"session": "old"},
+            )
+        finally:
+            audit.close()
+
+    assert materials.headers["X-API-Key"] == "old-key"
+    assert materials.headers["Authorization"] == "Bearer refreshed-token"
+    assert materials.cookies["auth"] == "ok"
+    audit_text = (tmp_path / "refresh.jsonl").read_text(encoding="utf-8")
+    assert "refresh-demo" not in audit_text
+    assert "refreshed-token" not in audit_text
+
+
+async def test_bad_refresh_token_raises(tmp_path: Path):
+    with fixture_server() as base:
+        config = make_config(
+            base,
+            auth=AuthConfig(
+                type=AuthType.HEADER,
+                header_name="Authorization",
+                header_value="Bearer old",
+                refresh_url="/api/refresh",
+                refresh_token="wrong",
+            ),
+        )
+        scope = build_scope(config)
+        audit = AuditLogger(tmp_path / "refresh-bad.jsonl", "refresh_bad")
+        try:
+            with pytest.raises(AuthError):
+                await refresh_auth(config, scope, audit)
+        finally:
+            audit.close()
 
 
 async def test_bad_password_fails_login(tmp_path: Path):

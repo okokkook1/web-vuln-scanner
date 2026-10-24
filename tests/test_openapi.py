@@ -601,6 +601,7 @@ async def test_openapi_external_refs_are_bundled(tmp_path: Path):
     scope = json.loads(scan.scope_json)
     assert scope["api"]["import_stats"]["external_documents"] >= 1
     assert scope["api"]["import_stats"]["resolved_refs"] >= 1
+    assert list((tmp_path / "openapi-cache").glob("*.json"))
 
 
 async def test_bfla_readonly_detects_second_account_admin_access(tmp_path: Path):

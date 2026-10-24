@@ -122,10 +122,17 @@ class AuthConfig(BaseModel):
     storage_token_key: str | None = None
     storage_header_name: str | None = None
     storage_header_prefix: str = "Bearer "
+    refresh_url: str | None = None
+    refresh_token: str | None = Field(default=None, repr=False, exclude=True)
+    refresh_token_field: str = "refresh_token"
+    refresh_access_token_field: str = "access_token"
+    refresh_header_name: str | None = None
+    refresh_header_prefix: str = "Bearer "
+    refresh_client_id: str | None = None
 
     @model_validator(mode="after")
     def _required_fields(self) -> AuthConfig:
-        for value in (self.login_url, self.verify_url):
+        for value in (self.login_url, self.verify_url, self.refresh_url):
             if not value:
                 continue
             parsed = urlsplit(value)
@@ -153,6 +160,13 @@ class AuthConfig(BaseModel):
                 raise ValueError("指定 localStorage token 時需要提供 Header 名稱")
             if self.storage_header_name and not (self.storage_token_key or "").strip():
                 raise ValueError("指定 Header 時需要提供 localStorage token key")
+        if self.refresh_url:
+            if not (self.refresh_token or "").strip():
+                raise ValueError("啟用 token refresh 時需要提供 refresh token")
+            if not self.refresh_token_field.strip():
+                raise ValueError("refresh token 欄位名稱不可空白")
+            if not self.refresh_access_token_field.strip():
+                raise ValueError("access token 欄位名稱不可空白")
         return self
 
     def summary(self) -> dict[str, str | None]:
@@ -166,6 +180,8 @@ class AuthConfig(BaseModel):
             "type": self.type.value,
             "login_url": safe_url(self.login_url),
             "verify_url": safe_url(self.verify_url),
+            "refresh_url": safe_url(self.refresh_url),
+            "refresh_enabled": bool(self.refresh_url),
         }
 
 

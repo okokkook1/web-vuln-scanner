@@ -305,6 +305,60 @@
           </label>
         </div>
 
+        <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+          <div class="card-head" style="margin-bottom:10px">
+            <div>
+              <h3>Token refresh <span class="opt">選填</span></h3>
+              <p class="muted small">
+                Cookie／Header／Storage state session 失效時，可呼叫 refresh endpoint 取得新 token。
+                表單登入會優先使用重新登入。
+              </p>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Refresh URL</span>
+              <input class="input" type="text" name="refresh_url" value="{{ f.refresh_url }}"
+                placeholder="https://staging.example.com/oauth/token">
+            </label>
+            <label class="field">
+              <span class="field-label">Refresh token</span>
+              <input class="input" type="password" name="refresh_token" autocomplete="off">
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">請求 refresh token 欄位</span>
+              <input class="input" type="text" name="refresh_token_field" value="{{ f.refresh_token_field }}">
+            </label>
+            <label class="field">
+              <span class="field-label">回應 access token 欄位</span>
+              <input class="input" type="text" name="refresh_access_token_field"
+                value="{{ f.refresh_access_token_field }}">
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">更新 Header 名稱 <span class="opt">選填</span></span>
+              <input class="input" type="text" name="refresh_header_name" value="{{ f.refresh_header_name }}"
+                placeholder="Authorization">
+            </label>
+            <label class="field">
+              <span class="field-label">Header 值前綴</span>
+              <input class="input" type="text" name="refresh_header_prefix"
+                value="{{ f.refresh_header_prefix }}" placeholder="Bearer ">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Client ID <span class="opt">選填</span></span>
+            <input class="input" type="text" name="refresh_client_id" value="{{ f.refresh_client_id }}">
+            <div class="hint">
+              以 form POST 送出 <code>grant_type=refresh_token</code>、refresh token 與 client_id；
+              回應需包含 access token 欄位，或設定新的 Cookie。
+            </div>
+          </label>
+        </div>
+
         <div class="form-row" style="margin-top:14px">
           <label class="field">
             <span class="field-label">登入後驗證 URL <span class="opt">選填</span></span>

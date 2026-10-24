@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.28.0
+
+- Added OAuth-style token refresh for Cookie/Header/State authentication.
+- Added GUI and CLI fields for refresh URL, refresh token, token fields, and header mapping.
+- Session recovery now revalidates form-login and token-refresh sessions before active checks.
+- Added a one-hour on-disk cache for external OpenAPI `$ref` documents.
+- Cached external refs are excluded from backups.
+
 ## 0.27.0
 
 - Added `vulnscan backup` and `vulnscan restore` with a consistent SQLite snapshot.

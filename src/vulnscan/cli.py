@@ -274,6 +274,41 @@ def scan_command(
     storage_header_prefix: str = typer.Option(
         "Bearer ", "--storage-header-prefix", help="Prefix for the mapped header value."
     ),
+    refresh_url: str = typer.Option(
+        "",
+        "--refresh-url",
+        help="OAuth-style token refresh endpoint for Cookie/Header/State auth.",
+    ),
+    refresh_token: str = typer.Option(
+        "",
+        "--refresh-token",
+        help="Refresh token (prefer VULNSCAN_REFRESH_TOKEN).",
+    ),
+    refresh_token_field: str = typer.Option(
+        "refresh_token",
+        "--refresh-token-field",
+        help="Form field used to send the refresh token.",
+    ),
+    refresh_access_token_field: str = typer.Option(
+        "access_token",
+        "--refresh-access-token-field",
+        help="JSON field containing the new access token.",
+    ),
+    refresh_header_name: str = typer.Option(
+        "",
+        "--refresh-header-name",
+        help="Header updated with the refreshed token.",
+    ),
+    refresh_header_prefix: str = typer.Option(
+        "Bearer ",
+        "--refresh-header-prefix",
+        help="Prefix for the refreshed header value.",
+    ),
+    refresh_client_id: str = typer.Option(
+        "",
+        "--refresh-client-id",
+        help="Optional OAuth client_id sent with the refresh request.",
+    ),
     out: Path = typer.Option(Path("reports"), "--out", help="Report output directory."),
     acknowledge: bool = typer.Option(
         False, "--acknowledge-authorized", help="Confirm you have written authorization."
@@ -394,6 +429,31 @@ def scan_command(
     except ValueError as exc:
         typer.echo(f"登入設定錯誤：{exc}", err=True)
         raise typer.Exit(code=2) from exc
+
+    if refresh_url:
+        if auth_config.type is AuthType.NONE:
+            typer.echo("--refresh-url 需要同時設定登入方式。", err=True)
+            raise typer.Exit(code=2)
+        if not refresh_token:
+            refresh_token = os.environ.get("VULNSCAN_REFRESH_TOKEN", "")
+        if not refresh_token:
+            refresh_token = typer.prompt(
+                "Refresh token",
+                hide_input=True,
+            )
+        auth_config = auth_config.model_copy(
+            update={
+                "refresh_url": refresh_url,
+                "refresh_token": refresh_token,
+                "refresh_token_field": refresh_token_field or "refresh_token",
+                "refresh_access_token_field": (
+                    refresh_access_token_field or "access_token"
+                ),
+                "refresh_header_name": refresh_header_name or None,
+                "refresh_header_prefix": refresh_header_prefix,
+                "refresh_client_id": refresh_client_id or None,
+            }
+        )
 
     bola_auth = None
     if bola:

@@ -28,7 +28,7 @@
 - API 測試 budget 可設定，報告會列出每個 POST 端點的已測／跳過原因
 - API／BOLA Coverage Diff：區分「本次未測」與「已修復」，避免 coverage 下降被誤判
 - 表單登入會在主動檢查、API 與 BOLA 前確認 session；失效時嘗試重新登入一次
-- 其他登入方式若 session 失效會安全略過，不會嘗試猜測 refresh token 流程
+- Cookie／Header／Storage state 可設定 OAuth-style refresh endpoint；session 失效時取得新 access token 或 Cookie
 - 掃描歷史、弱點篩選、單檔 HTML 報告、JSON 報告
 - 弱點人工驗證狀態：待確認、已確認、誤報、接受風險；支援篩選、批次更新、完整驗證歷程與報告
 - 驗證狀態以 fingerprint 跨掃描共用：新掃描的相同發現會自動沿用狀態、備註與歷程
@@ -198,6 +198,24 @@ vulnscan scan `
   --acknowledge-authorized
 ```
 
+若 API 使用 refresh token endpoint，可加上：
+
+```powershell
+vulnscan scan `
+  --url https://api.example.com `
+  --profile safe `
+  --auth-header-name Authorization `
+  --auth-header-value "Bearer initial-token" `
+  --refresh-url https://api.example.com/oauth/token `
+  --refresh-token "refresh-token" `
+  --refresh-header-name Authorization `
+  --refresh-access-token-field access_token `
+  --acknowledge-authorized
+```
+
+Refresh endpoint 以 form POST 送出 `grant_type=refresh_token` 與 refresh token；
+回應需包含 access token 欄位，或設定新的 Cookie。
+
 若 token 存在 localStorage，可選擇映射到 Header：
 
 ```powershell
@@ -340,6 +358,7 @@ UI 的「API 掃描（OpenAPI 匯入）」可上傳 OpenAPI 3.1／3.0 或 Swagge
 - 預覽會顯示匯入統計與 warnings（例如外部 `$ref`、略過 scope、其他 HTTP method、無法解析的參數／body `$ref`，並標出 method 與 path）
 - 預覽會計算 **spec fingerprint**；實際掃描會重新計算，若與預覽不同就保留匯入結果但**略過 API POST 測試**
 - 支援 scope 內 HTTP(S) 外部 `$ref`（最多 8 個外部文件、100 個 ref）；scope 外或 local file ref 只會產生 warning
+- 外部 `$ref` 文件會快取在 `data/openapi-cache/`，預設 TTL 1 小時，避免預覽與掃描重複抓取同一個文件
 - `POST 端點白名單`可限制 API POST 檢查的目標；支援 `POST https://host/api/items/*`、`POST /api/items/*` 等 pattern
 - **白名單留空時必須另外勾選「我確認測試所有 POST 端點」**，否則無法建立掃描
 - 掃描報告會記錄已選端點、manifest 摘要、白名單、全部測試確認狀態、spec fingerprint、session 檢查與 OpenAPI warnings
@@ -432,7 +451,9 @@ vulnscan scan --url https://api.example.com --profile safe `
 - 檔案預覽的外部 `$ref` 不帶登入 session；需要認證的外部文件請使用 URL 匯入，或把 schema 一起打包在檔案內
 - BOLA／BFLA 第二帳號 UI 支援 Cookie、Header、Storage state 與表單登入；不支援第二帳號瀏覽器互動登入
 - BOLA 只測試具有數字／UUID／ID 參數的 GET；BFLA 只測試管理語意路徑；結果仍可能需要人工確認角色與 ownership
-- Session 自動恢復目前只支援表單登入，且每次掃描最多嘗試一次
+- Session 自動恢復支援表單重新登入與 refresh token endpoint；每次掃描最多嘗試一次
+- Token refresh 需要 `verify_url` 才能在做主動檢查前主動偵測；API／BOLA 檢查仍會使用既有 session 檢查流程
+- 外部 `$ref` 快取不包含主規格文件，且不會放入 backup
 - 不支援 multipart、GraphQL、XML body 或檔案上傳欄位
 
 ## 掃描模式

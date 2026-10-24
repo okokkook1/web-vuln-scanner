@@ -142,6 +142,91 @@ def _find_storage_token(state: dict, scope: Scope, key: str) -> str | None:
     return None
 
 
+async def refresh_auth(
+    config: ScanConfig,
+    scope: Scope,
+    audit: AuditLogger,
+    *,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+) -> AuthMaterials:
+    """Refresh header/cookie credentials through an OAuth-style token endpoint."""
+    auth = config.auth
+    if not (auth.refresh_url or "").strip() or not (auth.refresh_token or "").strip():
+        raise AuthError("未設定 refresh URL 或 refresh token")
+    refresh_url = _resolve_url(auth.refresh_url or "", scope)
+    parsed_refresh = urlsplit(refresh_url)
+    if parsed_refresh.username or parsed_refresh.password:
+        raise AuthError("refresh URL 不可包含帳密")
+    data = {
+        "grant_type": "refresh_token",
+        auth.refresh_token_field: auth.refresh_token or "",
+    }
+    if auth.refresh_client_id:
+        data["client_id"] = auth.refresh_client_id
+    request_headers = {
+        "User-Agent": config.user_agent,
+        "Accept": "application/json, application/x-www-form-urlencoded",
+        **(headers or {}),
+    }
+    async with httpx.AsyncClient(
+        follow_redirects=False,
+        timeout=httpx.Timeout(config.timeout, connect=min(10.0, config.timeout)),
+        headers=request_headers,
+        cookies=cookies or None,
+        proxy=config.proxy or None,
+    ) as client:
+        try:
+            response = await client.post(refresh_url, data=data)
+        except httpx.HTTPError as exc:
+            raise AuthError(f"refresh 請求失敗：{exc}") from exc
+        audit.log(
+            method="POST",
+            url=refresh_url,
+            status=response.status_code,
+            request_headers={"content-type": "application/x-www-form-urlencoded"},
+            response_headers={
+                key.lower(): value for key, value in response.headers.items()
+            },
+            body_excerpt="",
+            rule_id="auth-refresh",
+        )
+        if response.status_code >= 400:
+            raise AuthError(f"refresh 端點回應 HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        token = (
+            payload.get(auth.refresh_access_token_field)
+            if isinstance(payload, dict)
+            else None
+        )
+        new_cookies = {key: value for key, value in client.cookies.items()}
+        new_headers = dict(headers or {})
+        if token:
+            token = str(token)
+            if "\r" in token or "\n" in token:
+                raise AuthError("refresh 回應的 access token 含非法換行")
+            header_name = (
+                auth.refresh_header_name
+                or auth.header_name
+                or "Authorization"
+            )
+            if not HEADER_NAME_RE.match(header_name):
+                raise AuthError("refresh Header 名稱格式不正確")
+            if "\r" in auth.refresh_header_prefix or "\n" in auth.refresh_header_prefix:
+                raise AuthError("refresh Header 前綴含非法換行")
+            new_headers[header_name] = f"{auth.refresh_header_prefix}{token}"
+        if not token and new_cookies == (cookies or {}):
+            raise AuthError("refresh 回應沒有新的 access token 或 Cookie")
+        return AuthMaterials(
+            headers=new_headers,
+            cookies=new_cookies,
+            summary=auth.summary(),
+        )
+
+
 async def _form_login(config: ScanConfig, scope: Scope, audit: AuditLogger) -> AuthMaterials:
     auth = config.auth
     login_url = _resolve_url(auth.login_url or "", scope)

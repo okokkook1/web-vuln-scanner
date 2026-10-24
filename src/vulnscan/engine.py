@@ -13,7 +13,7 @@ import httpx
 import yaml
 
 from .audit import AuditLogger
-from .auth import AuthError, prepare_auth
+from .auth import AuthError, prepare_auth, refresh_auth
 from .callback import CallbackServer
 from .checks import run_active, run_advanced, run_api, run_bola, run_passive
 from .checks.base import ScanContext
@@ -33,6 +33,7 @@ from .models import (
     ScanStats,
     Severity,
 )
+from .openapi_cache import OpenAPIRefCache, auth_cache_key
 from .openapi_import import (
     filter_get_endpoints,
     filter_post_endpoints,
@@ -77,6 +78,7 @@ class ScanEngine:
         self._session_valid = True
         self._session_reason = ""
         self._session_recovery_attempted: set[str] = set()
+        self._openapi_cache = OpenAPIRefCache(data_dir / "openapi-cache")
 
     def _emit(self, phase: str, message: str, progress: int) -> None:
         self._phase = phase
@@ -217,15 +219,26 @@ class ScanEngine:
                 self._emit("validate", f"OpenAPI URL 匯入：{spec_base}", 8)
             if spec:
                 try:
+                    cache = self._openapi_cache
+                    cache_key = auth_cache_key(self.config.auth)
+
+                    async def fetch_ref(url: str) -> tuple[dict[str, Any], str]:
+                        cached = cache.get(url, cache_key)
+                        if cached is not None:
+                            return cached
+                        document, final_url = await self._fetch_url_document(
+                            url,
+                            scope,
+                            rule_id="openapi-ref",
+                        )
+                        cache.set(url, final_url, document, cache_key)
+                        return document, final_url
+
                     bundle = await bundle_external_refs(
                         spec,
                         base_url=spec_base,
                         scope=scope,
-                        fetch=lambda url: self._fetch_url_document(
-                            url,
-                            scope,
-                            rule_id="openapi-ref",
-                        ),
+                        fetch=fetch_ref,
                     )
                     spec = bundle.spec
                     report = parse_openapi_report(
@@ -326,8 +339,14 @@ class ScanEngine:
             active: list[Finding] = []
             if (
                 self.config.profile in (Profile.SAFE, Profile.FULL)
-                and self.config.auth.type is AuthType.FORM
                 and (self.config.auth.verify_url or "").strip()
+                and (
+                    self.config.auth.type is AuthType.FORM
+                    or bool(
+                        self.config.auth.refresh_url
+                        and self.config.auth.refresh_token
+                    )
+                )
             ):
                 self._emit("active", "主動檢查前確認登入 session…", 71)
                 self._session_valid, self._session_reason = (
@@ -813,11 +832,20 @@ class ScanEngine:
         if meta_key in self._session_recovery_attempted:
             return False, "本次掃描已嘗試過重新登入"
         self._session_recovery_attempted.add(meta_key)
-        if auth.type is not AuthType.FORM:
-            return False, "此登入方式不支援自動重新登入"
         try:
             retry_config = self.config.model_copy(update={"auth": auth})
-            materials = await prepare_auth(retry_config, scope, audit)
+            if auth.type is AuthType.FORM:
+                materials = await prepare_auth(retry_config, scope, audit)
+            elif auth.refresh_url and auth.refresh_token:
+                materials = await refresh_auth(
+                    retry_config,
+                    scope,
+                    audit,
+                    headers=engine.auth_headers,
+                    cookies=engine.auth_cookies,
+                )
+            else:
+                return False, "此登入方式不支援自動 session refresh"
             engine.update_auth(materials.headers, materials.cookies)
         except (AuthError, httpx.HTTPError) as exc:
             self._api_meta.setdefault(meta_key, {})

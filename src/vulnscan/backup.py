@@ -66,6 +66,8 @@ def create_backup(
                 name = path.relative_to(data_dir).as_posix()
                 if name == DB_NAME or any(name.endswith(item) for item in SKIP_SUFFIXES):
                     continue
+                if name.startswith("openapi-cache/"):
+                    continue
                 archive.write(path, name)
                 file_count += 1
             metadata["file_count"] = file_count
